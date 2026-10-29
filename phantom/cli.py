@@ -32,6 +32,12 @@ from phantom.errors import (
     EXIT_INTERRUPTED,
     UsageError,
 )
+from phantom.inspection import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_FILES,
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_TOTAL_BYTES,
+)
 
 _COMMAND_MODULES = {
     "awaken": "phantom.commands.awaken",
@@ -67,7 +73,7 @@ environment:
 
 exit codes:
   0 success   2 invalid input   3 local model unavailable
-  4 database  5 inspection unavailable   130 interrupted
+  4 database  5 inspection refused or unreadable   130 interrupted
 """
 
 
@@ -213,15 +219,62 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser(
         "inspect",
         parents=[common],
-        help="Inspect a file or directory (engine not implemented yet).",
+        help="Inspect a file or directory in read-only mode.",
         description=(
-            "Validate and resolve PATH. The inspection engine is not implemented "
-            "in this build, so the command reports that plainly and reads nothing."
+            "Scan a user supplied file or directory without modifying or "
+            "executing anything. The scanner reports verified evidence with "
+            "paths and line numbers, then asks the local model for a clearly "
+            "labelled, unverified interpretation. Secret-like files, binary "
+            "files, dependency trees, build output, caches, and symlinks are "
+            "skipped."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="example:\n  python -m phantom.main inspect .",
+        epilog=(
+            "examples:\n"
+            "  python -m phantom.main inspect .\n"
+            "  python -m phantom.main inspect src --no-ai\n"
+            "  python -m phantom.main inspect . --max-files 50\n\n"
+            "limits:\n"
+            f"  per file: {DEFAULT_MAX_FILE_BYTES} bytes\n"
+            f"  total:    {DEFAULT_MAX_TOTAL_BYTES} bytes\n"
+            f"  files:    {DEFAULT_MAX_FILES}\n"
+            f"  depth:    {DEFAULT_MAX_DEPTH}\n"
+        ),
     )
     inspect.add_argument("path", metavar="PATH", help="File or directory to inspect.")
+    inspect.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="Print only the deterministic scanner report; do not call the model.",
+    )
+    inspect.add_argument(
+        "--max-file-bytes",
+        metavar="BYTES",
+        type=_positive_int,
+        default=DEFAULT_MAX_FILE_BYTES,
+        help=f"Skip files larger than BYTES (default: {DEFAULT_MAX_FILE_BYTES}).",
+    )
+    inspect.add_argument(
+        "--max-total-bytes",
+        metavar="BYTES",
+        type=_positive_int,
+        default=DEFAULT_MAX_TOTAL_BYTES,
+        help=f"Stop after reading BYTES in total (default: {DEFAULT_MAX_TOTAL_BYTES}).",
+    )
+    inspect.add_argument(
+        "--max-files",
+        metavar="N",
+        type=_positive_int,
+        default=DEFAULT_MAX_FILES,
+        help=f"Read at most N text files (default: {DEFAULT_MAX_FILES}).",
+    )
+    inspect.add_argument(
+        "--max-depth",
+        metavar="N",
+        type=_positive_int,
+        default=DEFAULT_MAX_DEPTH,
+        help=f"Descend at most N directory levels (default: {DEFAULT_MAX_DEPTH}).",
+    )
 
     remember = subparsers.add_parser(
         "remember",

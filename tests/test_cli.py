@@ -11,6 +11,7 @@ import pytest
 
 from core.brain import (
     BrainStatus,
+    ChatResult,
     ModelNotFoundError,
     OllamaUnavailableError,
     StreamChunk,
@@ -52,6 +53,8 @@ class FakeBrain:
         preflight_error: Exception | None = None,
         stream_error: Exception | None = None,
         status_error: Exception | None = None,
+        completion_text: str = "No clear problems found.",
+        completion_error: Exception | None = None,
     ) -> None:
         self.model = model
         self.host = host
@@ -62,6 +65,8 @@ class FakeBrain:
         self.preflight_error = preflight_error
         self.stream_error = stream_error
         self.status_error = status_error
+        self.completion_text = completion_text
+        self.completion_error = completion_error
         self.calls: list[dict[str, Any]] = []
         self.closed = False
 
@@ -98,6 +103,18 @@ class FakeBrain:
         if self.stream_error is not None:
             raise self.stream_error
         yield from self.chunks
+
+    def complete_chat(self, messages, *, system=None, **kwargs):
+        self.calls.append(
+            {
+                "messages": [dict(item) for item in messages],
+                "system": system,
+                **kwargs,
+            }
+        )
+        if self.completion_error is not None:
+            raise self.completion_error
+        return ChatResult(text=self.completion_text, model=self.model)
 
     def close(self) -> None:
         self.closed = True
@@ -210,6 +227,10 @@ def test_parser_accepts_every_command():
     "argv",
     [
         ["inspect"],
+        ["inspect", ".", "--max-files", "0"],
+        ["inspect", ".", "--max-file-bytes", "0"],
+        ["inspect", ".", "--max-total-bytes", "0"],
+        ["inspect", ".", "--max-depth", "0"],
         ["remember"],
         ["forget"],
         ["memories", "--limit", "0"],
@@ -550,16 +571,25 @@ def test_inspect_rejects_a_missing_path(tmp_path):
     assert "Path not found" in result.err
 
 
-def test_inspect_connects_the_interface_without_reading(tmp_path):
+def test_inspect_reports_findings_without_modifying(tmp_path):
     target = tmp_path / "project"
     target.mkdir()
     source = target / "app.py"
-    source.write_text("print('unchanged')\n", encoding="utf-8")
+    source.write_text(
+        "print('unchanged')\n# TODO: check this\n",
+        encoding="utf-8",
+    )
 
-    result = run_cli(["inspect", str(target)], tmp_path)
-    assert result.code == 5
-    assert "not implemented" in result.err
-    assert source.read_text(encoding="utf-8") == "print('unchanged')\n"
+    result = run_cli(["inspect", str(target), "--plain", "--no-ai"], tmp_path)
+    assert result.code == 0
+    assert "Confirmed observations" in result.out
+    assert "app.py:2" in result.out
+    assert "TODO" in result.out
+    assert "Model interpretation skipped" in result.out
+    assert "\x1b" not in result.out
+    assert source.read_text(encoding="utf-8") == (
+        "print('unchanged')\n# TODO: check this\n"
+    )
 
 
 # -- chat -------------------------------------------------------------

@@ -33,6 +33,9 @@ memory are local.
 
 - **Local inference only** through Ollama, with no cloud fallback.
 - **Streaming chat** with bounded in-memory history and slash commands.
+- **Read-only project inspection** with evidence-based findings, `path:line`
+  markers, size and count limits, secret and binary refusal, and an optional
+  local-model interpretation that is clearly labelled as unverified.
 - **Explicit memory** in a versioned SQLite archive with stable UUIDs and
   timestamps. Conversations are not persisted by default.
 - **Grounded mood** derived deterministically from real events such as saving a
@@ -57,9 +60,10 @@ phantom/                  command line presentation
   cli.py                  argparse tree, dispatch, exit codes
   config.py               CLI > environment > defaults
   render.py               Rich theme, panels, tables, streaming, plain mode
-  views.py                shared status and memory tables
+  views.py                shared status, memory, and inspection tables
   storage.py              archive and mood helpers
   chat.py                 interactive session and slash commands
+  inspection.py           safe scanner, prompt boundary, citation checks
   commands/               one small module per command
 ```
 
@@ -164,11 +168,55 @@ is kept only in memory for this session. Slash commands:
 
 ```bash
 python -m phantom.main inspect .
+python -m phantom.main inspect src --no-ai
+python -m phantom.main inspect . --max-files 50
 ```
 
-Validates and resolves the supplied path. **The scanning engine is not
-implemented in this build.** The command says so plainly, reads no files, and
-exits with code 5. It never modifies the target.
+Scans a file or directory in read-only mode. The scanner reports only what it
+can support with evidence: the files it read, README presence, root project
+metadata, likely entry points and tests, extension counts, and
+`TODO`/`FIXME`/`HACK`/`XXX`/`BUG` markers with `path:line` locations. It then
+asks the local model for a short interpretation, displayed in a separate
+**INTERPRETATION (model-generated)** panel. Every `path:line` citation the
+model gives is checked against the files that were actually read; unsupported
+citations are listed as such.
+
+Default limits:
+
+| Limit | Flag | Default |
+| --- | --- | --- |
+| Per file | `--max-file-bytes BYTES` | 262,144 bytes (256 KiB) |
+| Total scanned | `--max-total-bytes BYTES` | 4,194,304 bytes (4 MiB) |
+| Readable files | `--max-files N` | 200 |
+| Directory depth | `--max-depth N` | 15 |
+
+`--no-ai` prints only the deterministic scanner report and never creates a
+model client. If Ollama is unavailable, the command still exits `0` with the
+static report and a warning; inspection does not depend on the model.
+
+Safety behaviour:
+
+- Hidden entries, `.git`, dependency directories (`node_modules`, `.venv`,
+  `venv`), build output (`dist`, `build`, `target`), and tool caches are
+  skipped.
+- Secret-like names are refused before opening: `.env*`, private keys,
+  `*.pem`, `*.key`, `id_rsa*`, `.npmrc`, `.pypirc`, `.netrc`,
+  credential/secret stores, and `.ssh`/`.aws`/`.azure`/`.gnupg`/`.kube`
+  directories. Files containing private-key material are refused too.
+- Binary files and non-UTF-8 files are skipped. Oversized files, the total byte
+  budget, the file count, and the depth limit are enforced with explicit
+  warnings and a truncation indicator.
+- Symbolic links are never followed. A link that resolves outside the selected
+  root is recorded as a refused escape, and directory reparse points are
+  checked against the root before descent.
+- Text resembling instructions to an AI is shown as ignored data, never
+  followed. No inspected code is imported, executed, or modified.
+
+Inspection records a grounded mood event in the local archive. A broken archive
+produces a warning, never a failed inspection.
+
+Exit codes: `0` report produced, `2` invalid path, `5` refused secret, binary,
+or otherwise unreadable target.
 
 ### `remember "TEXT"`
 
@@ -230,7 +278,7 @@ reports how many memories remain.
 | `2` | Invalid input or refused configuration |
 | `3` | Local model or Ollama unavailable |
 | `4` | Database problem |
-| `5` | Inspection unavailable |
+| `5` | Inspection refused or unable to read the target |
 | `130` | Interrupted |
 
 ## Privacy and security design
@@ -246,7 +294,12 @@ reports how many memories remain.
 - Model output is stripped of terminal escape sequences and control characters
   before display.
 - PHANTOM never executes model-generated commands and never modifies inspected
-  paths. The `inspect` command currently reads nothing at all.
+  paths. Inspection opens files read-only, skips symlinks, refuses secret-like
+  files before reading them, and enforces per-file, total-size, file-count, and
+  depth limits.
+- Inspected file content is passed to the local model only as delimited,
+  explicitly untrusted data. The model receives no tools, and any citation it
+  produces is checked against the scanner's list of files actually read.
 - Memory deletion happens only for one explicitly identified record, after
   confirmation.
 
@@ -256,16 +309,28 @@ reports how many memories remain.
 python -m pytest
 ```
 
-The suite covers the core engine and the CLI. Ollama is mocked in CLI tests, so
-no running model, network access, or real user archive is required. Tests use
-temporary directories and never touch `~/.phantom`.
+The suite covers the core engine, the CLI, and the inspection scanner. Ollama is
+mocked in CLI tests, so no running model, network access, or real user archive
+is required. Tests use temporary directories and never touch `~/.phantom` or a
+real project tree.
 
-Current suite: **113 tests passing** (Python 3.14, pytest 9.2).
+Current suite: **165 tests passing, 2 skipped** on Windows (symlink creation
+requires a privilege that the test environment does not have; a separate
+root-containment test still runs). Live `inspect` inference was also checked
+against local `qwen3:8b`.
 
 ## Known limitations
 
-- Project inspection is interface-only in this build. It validates a path and
-  exits with code 5; it does not scan files yet.
+- Inspection reads UTF-8 text only. UTF-16 source files and other encodings are
+  skipped as non-text, and binary files are never decoded.
+- Hidden entries are skipped by default, so `.github` workflows and dotfile
+  configuration are not part of the report.
+- Symbolic links are never followed, even when they point inside the root.
+- The model interpretation is a hypothesis generator. It can be wrong; the
+  scanner report and cited file locations are the evidence.
+- Project metadata extraction covers root-level `pyproject.toml`,
+  `package.json`, `Cargo.toml`, `go.mod`, and `requirements.txt`; other
+  ecosystems are reported through their files and names only.
 - `qwen3:8b` may run entirely on CPU and can be slow on laptops without a GPU.
   Use `--model` with a smaller installed model for faster demonstrations.
 - Conversation history is intentionally not persisted, so restarting `chat`
@@ -283,10 +348,13 @@ Current suite: **113 tests passing** (Python 3.14, pytest 9.2).
 3. `python -m phantom.main memories` - show the ID, timestamp, and user origin.
 4. `python -m phantom.main chat` - ask a programming question, show streaming,
    then ask something that uses the stored memory.
-5. `python -m phantom.main status` - show the model, archive health, and count.
-6. `python -m phantom.main forget <id>` - demonstrate confirmation.
-7. `python -m phantom.main exorcise` - show that memories remain.
-8. Restart and run `memories` again to prove persistence across sessions.
+5. `python -m phantom.main inspect . --no-ai` - show confirmed findings, a
+   skipped secret, and TODO locations, then run without `--no-ai` to show the
+   clearly separated model interpretation.
+6. `python -m phantom.main status` - show the model, archive health, and count.
+7. `python -m phantom.main forget <id>` - demonstrate confirmation.
+8. `python -m phantom.main exorcise` - show that memories remain.
+9. Restart and run `memories` again to prove persistence across sessions.
 
 ## License
 

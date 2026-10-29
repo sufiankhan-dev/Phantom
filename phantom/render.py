@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import re
 import time
-from typing import Iterable, Sequence
+from contextlib import contextmanager
+from typing import Iterable, Iterator, Sequence
 
 from rich import box
 from rich.console import Console, RenderableType
@@ -140,6 +141,23 @@ class Renderer:
             Text(label, style="phantom.muted") if label else None,
             style="phantom.border",
         )
+
+    @contextmanager
+    def progress(self, message: str) -> Iterator[None]:
+        """Show a transient spinner, or one stable line when that is unsafe.
+
+        A spinner is never the only sign that work happened: plain and
+        non-interactive runs print the message, and the spinner stops before
+        any error or report is written.
+        """
+
+        label = sanitize_output(message)
+        if self.plain or not self.console.is_terminal:
+            self.note(f"... {label}")
+            yield
+            return
+        with self.console.status(Text(label, style="phantom.muted"), spinner="dots"):
+            yield
 
     def ok(self, message: str) -> None:
         self.console.print(status_text("ok", message))

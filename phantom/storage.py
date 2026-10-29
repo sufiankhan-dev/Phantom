@@ -43,6 +43,8 @@ def record_mood(
     engine: MoodEngine,
     event: MoodEvent | str,
     *,
+    files: int = 0,
+    todos: int = 0,
     detail: str | None = None,
     renderer: object | None = None,
 ) -> MoodState:
@@ -52,7 +54,7 @@ def record_mood(
     primary operation is not undone.
     """
 
-    state = engine.record(event, detail=detail)
+    state = engine.record(event, files=files, todos=todos, detail=detail)
     try:
         # Refuse to overwrite a mood record that exists but cannot be read.
         store.load_mood()
