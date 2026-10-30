@@ -67,7 +67,9 @@ def run(ctx: CommandContext, args: Any) -> int:
 
         if not getattr(args, "yes", False):
             try:
-                answer = ctx.input_func("Delete this memory permanently? [y/N] ")
+                answer = renderer.confirm(
+                    "Delete this memory permanently? [y/N]", ctx.input_func
+                )
             except EOFError as exc:
                 raise UsageError(
                     "No confirmation was received; nothing was deleted.",

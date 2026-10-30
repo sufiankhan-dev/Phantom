@@ -81,18 +81,25 @@ that rejects non-loopback hosts unless the user explicitly opts in.
 The interface is meant to be memorable in a recording and still usable in a
 plain shell:
 
-- **Identity.** A custom ASCII ghost marks the application. A wide, styled
-  terminal gets the full nine-line mark; plain mode, narrow terminals, and
-  redirected output get a compact three-line sigil so nothing wraps into noise.
+- **Identity.** A custom ASCII ghost marks the application, centred over the
+  wordmark and tagline. A wide, styled terminal gets the full nine-line mark;
+  plain mode, narrow terminals, and redirected output get a compact three-line
+  sigil so nothing wraps into noise.
+- **Layout.** Reports share one visual language: left aligned section rules,
+  quiet key/value grids instead of heavy boxed tables, bordered panels for
+  speech, and exactly one blank line between blocks. `phantom --help` is a
+  painted page built from the same text as the argparse epilog, so the two
+  cannot drift apart.
 - **Awakening.** `phantom` (or `phantom awaken`) reveals the mark line by line, checks Python, the
   Ollama package, the archive, and the local model, then prints the
   introduction and a line that reflects the real model state. The reveal is
   under a third of a second and can be skipped with `--no-animation`.
 - **Conversation.** `phantom chat` opens with the compact mark and a session panel.
-  Responses stream directly from the model; there is no artificial typing delay
-  and no fabricated activity. When Ollama reports `eval_count` and
-  `eval_duration`, a dim `[i]` receipt shows the measured token count and tokens
-  per second.
+  The `you>` prompt and the `phantom>` reply marker are styled on a live
+  terminal and stay plain ASCII everywhere else. Responses stream directly from
+  the model; there is no artificial typing delay and no fabricated activity.
+  When Ollama reports `eval_count` and `eval_duration`, a dim right aligned
+  receipt shows the measured token count and tokens per second.
 - **Shutdown.** `phantom exorcise` prints the closed-eye mark, two fading lines, a real
   shutdown summary, and the final rule `the cursor goes dark`. It never deletes
   anything.
@@ -122,8 +129,10 @@ phantom/                  command line presentation
   cli.py                  argparse tree, default command, dispatch, exit codes
   config.py               CLI > environment > defaults
   art.py                  custom ASCII marks and the compact sigil
-  render.py               Rich theme, panels, tables, streaming, plain mode
-  views.py                shared status, memory, and inspection tables
+  render.py               Rich theme, sections, field grids, streaming, plain mode
+  helpdata.py             command, option, and environment text shared by help
+  help.py                 the painted `phantom --help` page
+  views.py                shared status, memory, and inspection views
   storage.py              archive and mood helpers
   chat.py                 interactive session and slash commands
   inspection.py           safe scanner, prompt boundary, citation checks
@@ -136,8 +145,9 @@ docs/DEMO.md              recording script and claims to avoid
 
 Dependency direction is one way: `phantom` imports `core`; `core` never imports
 `phantom`. Importing either package does not contact Ollama or create a
-database. `phantom/main.py` stays standard-library only so `--help` works even
-when optional dependencies are missing.
+database. `phantom/main.py` stays standard-library only, and `phantom/cli.py`
+imports the Rich layer only after parsing, so `--help` for a subcommand and all
+argument validation still work before the renderer is loaded.
 
 ## Prerequisites
 

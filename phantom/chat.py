@@ -17,11 +17,12 @@ from core.personality import (
     build_system_prompt,
     format_mood,
 )
+from rich.text import Text
 
 from phantom.config import Settings
 from phantom.render import Renderer, sanitize_output
 from phantom.storage import load_mood, record_mood
-from phantom.views import format_timestamp, memory_table, render_status
+from phantom.views import format_timestamp, memory_table, plural, render_status
 
 MAX_TURNS = 12
 MAX_HISTORY_CHARS = 6000
@@ -68,19 +69,25 @@ class ChatSession:
         self._record(MoodEvent.SESSION_START)
         self.renderer.sigil(animate=self.settings.animation)
         self.renderer.panel(
-            "The cursor waits.\n"
-            "Ask a question, or use /help. Nothing you type is persisted "
-            "unless you explicitly archive it with /remember.",
+            Text.assemble(
+                ("The cursor waits.\n\n", "phantom.title"),
+                (
+                    "Ask a question, or use /help. Nothing you type is persisted "
+                    "unless you explicitly archive it with /remember.",
+                    "phantom.body",
+                ),
+            ),
             title="PHANTOM",
+            subtitle=f"local session / {self.settings.brain.model}",
         )
         self.renderer.note(
-            f"model {self.settings.brain.model} via {self.settings.brain.host} "
-            "- /exit closes the session"
+            f"model {self.settings.brain.model} / {self.settings.brain.host} "
+            "/ /exit closes the session"
         )
 
         while True:
             try:
-                raw = self.input_func("you> ")
+                raw = self.renderer.ask("you", self.input_func)
             except (EOFError, KeyboardInterrupt):
                 self.renderer.print()
                 self.renderer.note("The connection thins. The transcript was not saved.")
@@ -109,8 +116,9 @@ class ChatSession:
             self.renderer.note("Session closed. The archive could not be read.")
         else:
             self.renderer.note(
-                f"Session closed. {count} "
-                f"{'memory remains' if count == 1 else 'memories remain'} on disk."
+                f"Session closed. "
+                f"{plural(count, 'memory', 'memories')} "
+                f"{'remains' if count == 1 else 'remain'} on disk."
             )
 
     # -- model turns ----------------------------------------------------
@@ -184,7 +192,7 @@ class ChatSession:
         if rate is not None:
             details.append(f"{rate:.1f} tok/s")
         if details:
-            self.renderer.info(
+            self.renderer.stats(
                 f"{self.settings.brain.model} - " + " - ".join(details)
             )
 
@@ -241,9 +249,13 @@ class ChatSession:
         return False
 
     def _show_help(self) -> None:
-        table = self.renderer.table("Session commands", ["Command", "Effect"])
+        self.renderer.section("Session commands", detail="type /exit to leave")
+        table = self.renderer.table(None, ["Command", "Effect"])
         for command, effect in _HELP_ROWS:
-            table.add_row(command, effect)
+            table.add_row(
+                Text(command, style="phantom.accent"),
+                Text(effect, style="phantom.body"),
+            )
         self.renderer.print(table)
 
     def _remember(self, argument: str) -> None:
@@ -259,7 +271,11 @@ class ChatSession:
         self.renderer.ok(
             f"Archived as {record.short_id} at {format_timestamp(record.created_at)}."
         )
-        self.renderer.panel(record.content, title="Memory archived")
+        self.renderer.panel(
+            record.content,
+            title="Memory archived",
+            subtitle="user supplied",
+        )
 
     def _show_memories(self) -> None:
         try:
@@ -270,6 +286,7 @@ class ChatSession:
         if not records:
             self.renderer.note("The archive is empty. Use /remember TEXT to add one.")
             return
+        self.renderer.section("Memory archive", detail="newest first")
         self.renderer.print(memory_table(self.renderer, records))
 
     def _forget(self, argument: str) -> None:
@@ -284,10 +301,13 @@ class ChatSession:
         self.renderer.panel(
             record.content,
             title=f"Memory {record.short_id}",
-            subtitle=f"recorded {record.created_at}",
+            subtitle=f"recorded {format_timestamp(record.created_at)}",
+            border_style="phantom.warn",
         )
         try:
-            answer = self.input_func("Delete this memory? [y/N] ")
+            answer = self.renderer.confirm(
+                "Delete this memory? [y/N]", self.input_func
+            )
         except (EOFError, KeyboardInterrupt):
             self.renderer.print()
             self.renderer.note("No confirmation received. Nothing was deleted.")
@@ -309,8 +329,11 @@ class ChatSession:
         render_status(self.renderer, self.settings, status, health, self.mood.state)
 
     def _show_mood(self) -> None:
+        mood_line = format_mood(self.mood.state)
+        if not self.renderer.styled:
+            mood_line = mood_line.replace("·", "|")
         self.renderer.panel(
-            f"{format_mood(self.mood.state).replace('·', '|')}\n\n"
+            f"{mood_line}\n\n"
             + (
                 "\n".join(f"- {item}" for item in self.mood.state.evidence)
                 if self.mood.state.evidence

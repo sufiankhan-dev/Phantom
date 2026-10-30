@@ -6,7 +6,7 @@ from typing import Any
 
 from phantom.context import CommandContext
 from phantom.storage import open_store
-from phantom.views import memory_table
+from phantom.views import memory_table, plural
 
 
 def run(ctx: CommandContext, args: Any) -> int:
@@ -20,16 +20,18 @@ def run(ctx: CommandContext, args: Any) -> int:
         renderer.panel(
             "The archive is empty.\n"
             'Use: phantom remember "TEXT"',
-            title="No memories",
+            title="Empty archive",
+            subtitle="nothing has been stored yet",
         )
         return 0
 
+    renderer.section("Memory archive", detail="newest first")
     renderer.print(memory_table(renderer, records))
     shown = len(records)
     if limit is not None and shown < total:
         renderer.note(f"Showing {shown} of {total} memories, newest first.")
     else:
         renderer.note(
-            f"{total} {'memory' if total == 1 else 'memories'}, newest first."
+            f"{plural(total, 'memory', 'memories')}, newest first."
         )
     return 0

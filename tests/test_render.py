@@ -115,3 +115,43 @@ def test_animation_is_gated_by_plain_no_color_dumb_term_and_non_tty():
 )
 def test_status_markers_do_not_depend_on_colour(state: str, marker: str):
     assert status_text(state, "detail").plain == f"{marker} detail"
+
+
+def test_sections_and_field_grids_align_without_borders():
+    stream = io.StringIO()
+    renderer = Renderer(plain=True, file=stream, width=60)
+    renderer.section("Configuration", detail="facts")
+    renderer.fields("Configuration", [("Model", "qwen3:8b"), ("Privacy", "local")])
+
+    value = stream.getvalue()
+    assert "Configuration" in value
+    assert "facts" in value
+    assert "Model" in value
+    assert "qwen3:8b" in value
+    assert value.isascii()
+    assert "\x1b" not in value
+
+
+def test_ask_styles_the_prompt_only_on_a_styled_terminal():
+    styled = io.StringIO()
+    renderer = Renderer(file=styled, force_terminal=True, width=60)
+    prompts: list[str] = []
+
+    def styled_answer(prompt: str) -> str:
+        prompts.append(prompt)
+        return "hello"
+
+    assert renderer.ask("you", styled_answer) == "hello"
+    assert prompts == [""]
+    assert "you> " in sanitize_output(styled.getvalue())
+
+    plain = io.StringIO()
+    plain_prompts: list[str] = []
+
+    def plain_answer(prompt: str) -> str:
+        plain_prompts.append(prompt)
+        return "hello"
+
+    plain_renderer = Renderer(plain=True, file=plain, width=60)
+    assert plain_renderer.ask("you", plain_answer) == "hello"
+    assert plain_prompts == ["you> "]

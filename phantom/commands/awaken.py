@@ -13,12 +13,21 @@ from rich.text import Text
 from phantom.context import CommandContext
 from phantom.render import status_text
 from phantom.storage import load_mood, open_store, record_mood
+from phantom.views import plural
 
 INTRO = (
     "The terminal cools by a degree. Something settles behind the cursor.\n\n"
     "I am PHANTOM. I run on this machine through Ollama, and nowhere else.\n"
     "What you tell me to remember stays in a local SQLite file you can read.\n"
     "Ask plainly; I will answer plainly."
+)
+
+NEXT_STEPS: tuple[tuple[str, str], ...] = (
+    ("phantom chat", "speak with the entity"),
+    ('phantom remember "TEXT"', "archive an explicit memory"),
+    ("phantom memories", "read what it keeps"),
+    ("phantom inspect PATH", "read-only look at a project"),
+    ("phantom status", "check model and archive"),
 )
 
 
@@ -78,10 +87,7 @@ def run(ctx: CommandContext, args: Any) -> int:
             )
         checks.append(("Local model", model_checks))
 
-        table = renderer.table("AWAKENING", ["Check", "Result"])
-        for name, result in checks:
-            table.add_row(name, result)
-        renderer.print(table)
+        renderer.fields("Awakening", checks, detail="preflight")
 
         if not health.ok:
             renderer.error(
@@ -118,29 +124,32 @@ def run(ctx: CommandContext, args: Any) -> int:
             renderer=renderer,
         )
 
-        renderer.panel(INTRO, title="TRANSMISSION")
-
-        facts = renderer.table("PRESENCE", ["Fact", "Value"])
-        facts.add_row(
-            "Model",
-            Text(f"{model_status.model} via {model_status.host}"),
-        )
-        facts.add_row("Memories on record", Text(str(health.memory_count)))
-        facts.add_row("Internal state", Text(state.label))
-        if health.schema_version is not None:
-            facts.add_row("Archive schema", Text(f"v{health.schema_version}"))
-        facts.add_row("Privacy", Text("nothing leaves this machine"))
-        renderer.print(facts)
-
         renderer.panel(
-            "phantom chat\n"
-            'phantom remember "TEXT"\n'
-            "phantom memories\n"
-            "phantom status\n"
-            "phantom exorcise",
-            title="NEXT",
+            INTRO,
+            title="TRANSMISSION",
+            subtitle="local model / local archive",
         )
 
+        facts: list[tuple[str, Any]] = [
+            ("Model", f"{model_status.model} via {model_status.host}"),
+            ("Memories on record", plural(health.memory_count, "memory", "memories")),
+            ("Internal state", state.label),
+        ]
+        if health.schema_version is not None:
+            facts.append(("Archive schema", f"v{health.schema_version}"))
+        facts.append(("Privacy", "nothing leaves this machine"))
+        renderer.fields("Presence", facts)
+
+        renderer.section("Next", detail="commands")
+        commands = renderer.table(None, ["Command", "Purpose"])
+        for command, purpose in NEXT_STEPS:
+            commands.add_row(
+                Text(command, style="phantom.accent"),
+                Text(purpose, style="phantom.body"),
+            )
+        renderer.print(commands)
+
+        renderer.print()
         renderer.reveal(
             [
                 "It is awake. It is listening."

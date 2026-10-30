@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from core.personality import MoodEngine, MoodEvent
 from rich.text import Text
 
 from phantom.config import Settings
 from phantom.context import CommandContext
+from phantom.render import status_text
 from phantom.storage import load_mood, open_store, record_mood
 
 
@@ -49,17 +51,23 @@ def run(ctx: CommandContext, args: Any) -> int:
     renderer.farewell(animate=settings.animation)
     renderer.reveal(lines, delay=0.12 if settings.animation else 0.0)
 
-    table = renderer.table("Shutdown", ["Fact", "Value"])
-    table.add_row(
-        "Memories",
-        Text(f"{count} {'memory remains' if count == 1 else 'memories remain'}"),
-    )
-    table.add_row("Archive", Text(archive_path))
-    table.add_row("Archive health", Text("ok" if healthy else "needs attention"))
+    rows: list[tuple[str, Any]] = [
+        (
+            "Memories",
+            Text(
+                f"{count} {'memory remains' if count == 1 else 'memories remain'}"
+            ),
+        ),
+        ("Archive", Text(archive_path)),
+        (
+            "Archive health",
+            status_text("ok" if healthy else "warn", "ok" if healthy else "needs attention"),
+        ),
+    ]
     if state is not None:
-        table.add_row("Internal state", Text(state.label))
-    table.add_row("Deleted", Text("nothing"))
-    renderer.print(table)
+        rows.append(("Internal state", Text(state.label)))
+    rows.append(("Deleted", Text("nothing", style="phantom.accent")))
+    renderer.fields("Shutdown", rows)
 
     renderer.panel(
         "Nothing was deleted. Memories remain exactly where they were.\n"

@@ -11,7 +11,7 @@ from core.personality import MoodState, format_mood
 
 from phantom.config import Settings
 from phantom.inspection import InspectionReport, ModelAnalysis
-from phantom.render import Renderer, sanitize_output, status_text
+from phantom.render import Renderer, badge, sanitize_output, status_text
 from rich.table import Table
 from rich.text import Text
 
@@ -28,27 +28,54 @@ def format_timestamp(value: str) -> str:
     return moment.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
+def plural(count: int, singular: str, plural_form: str | None = None) -> str:
+    """Return ``count`` with its correct noun form."""
+
+    word = singular if count == 1 else (plural_form or f"{singular}s")
+    return f"{count} {word}"
+
+
 def _plain(value: object) -> Text:
     """Return untrusted dynamic text that Rich will not parse as markup."""
 
     return Text(sanitize_output(value))
 
 
+def _separator(renderer: Renderer) -> str:
+    """A middle dot on a styled terminal, a pipe everywhere else."""
+
+    return "·" if renderer.styled else "|"
+
+
+def _mood_line(renderer: Renderer, mood: MoodState) -> str:
+    return format_mood(mood).replace("·", _separator(renderer))
+
+
 def memory_table(
     renderer: Renderer,
     records: Sequence[MemoryRecord],
     *,
-    title: str = "Memory archive",
+    title: str | None = None,
 ) -> Table:
     """Build the table used by ``memories`` and the ``/memories`` command."""
 
-    table = renderer.table(title, ["#", "ID", "Recorded", "Origin", "Memory"])
+    table = renderer.table(
+        title,
+        ["#", "ID", "Origin", "Recorded", "Memory"],
+    )
+    table.columns[0].justify = "right"
+    table.columns[1].no_wrap = True
+    table.columns[2].no_wrap = True
+    table.columns[3].no_wrap = True
     for position, record in enumerate(records, start=1):
+        origin_style = (
+            "phantom.accent" if record.origin == "user" else "phantom.warn"
+        )
         table.add_row(
-            _plain(str(position)),
+            Text(str(position), style="phantom.muted"),
             Text(record.short_id, style="phantom.accent"),
-            _plain(format_timestamp(record.created_at)),
-            _plain(record.origin),
+            badge(record.origin, origin_style),
+            Text(format_timestamp(record.created_at), style="phantom.muted"),
             _plain(record.content),
         )
     return table
@@ -61,74 +88,122 @@ def render_status(
     health: MemoryHealth,
     mood: MoodState,
 ) -> None:
-    """Print the three status tables: configuration, model, and archive."""
+    """Print the status dashboard: identity, configuration, model, archive."""
 
-    config = renderer.table("Configuration", ["Setting", "Value"])
-    config.add_row("Model", _plain(settings.brain.model))
-    config.add_row("Ollama host", _plain(settings.brain.host))
-    config.add_row("Request timeout", _plain(f"{settings.brain.timeout:g}s"))
-    config.add_row("Context window", _plain(f"{settings.brain.num_ctx} tokens"))
-    config.add_row("Response cap", _plain(f"{settings.brain.num_predict} tokens"))
-    config.add_row("Temperature", _plain(f"{settings.brain.temperature:g}"))
-    config.add_row(
-        "Privacy",
-        _plain("local only" if not settings.brain.allow_remote else "remote host allowed"),
+    ready = (
+        model_status.reachable
+        and model_status.model_available
+        and health.ok
     )
-    config.add_row("Database", _plain(settings.db_display))
-    config.add_row("Mood", _plain(format_mood(mood).replace("·", "|")))
-    renderer.print(config)
+    archive_state = "integrity ok" if health.ok else "integrity failed"
+    model_state = (
+        "model ready"
+        if model_status.reachable and model_status.model_available
+        else "model unavailable"
+    )
+    dot = _separator(renderer)
+    summary = Text()
+    summary.append(model_status.model, style="phantom.title")
+    summary.append("  via  ", style="phantom.muted")
+    summary.append(model_status.host, style="phantom.body")
+    summary.append("\n", style="phantom.body")
+    summary.append(plural(health.memory_count, "memory", "memories"), style="phantom.body")
+    summary.append(f"  {dot}  archive ", style="phantom.muted")
+    summary.append(
+        f"v{health.schema_version}" if health.schema_version is not None else "unknown",
+        style="phantom.body",
+    )
+    summary.append(f"  {dot}  ", style="phantom.muted")
+    summary.append(mood.label, style="phantom.accent")
+    summary.append("\n")
+    summary.append(
+        status_text("ok" if ready else "warn", f"{model_state}, {archive_state}"),
+    )
+    renderer.panel(
+        summary,
+        title="PHANTOM // status",
+        subtitle="local only",
+        border_style="phantom.border" if ready else "phantom.warn",
+    )
 
-    model = renderer.table("Local model", ["Check", "Result"])
+    renderer.fields(
+        "Configuration",
+        [
+            ("Model", settings.brain.model),
+            ("Ollama host", settings.brain.host),
+            ("Request timeout", f"{settings.brain.timeout:g}s"),
+            ("Context window", f"{settings.brain.num_ctx} tokens"),
+            ("Response cap", f"{settings.brain.num_predict} tokens"),
+            ("Temperature", f"{settings.brain.temperature:g}"),
+            (
+                "Privacy",
+                "local only"
+                if not settings.brain.allow_remote
+                else "remote host allowed",
+            ),
+            ("Database", settings.db_display),
+            ("Mood", _mood_line(renderer, mood)),
+        ],
+    )
+
+    model_rows: list[tuple[object, object]] = []
     if model_status.reachable:
-        model.add_row("Ollama service", status_text("ok", "reachable"))
+        model_rows.append(("Ollama service", status_text("ok", "reachable")))
     else:
-        model.add_row(
-            "Ollama service",
-            status_text("fail", f"unreachable at {model_status.host}"),
+        model_rows.append(
+            ("Ollama service", status_text("fail", f"unreachable at {model_status.host}"))
         )
     if model_status.reachable and model_status.model_available:
-        model.add_row("Requested model", status_text("ok", f"{model_status.model} installed"))
-    elif model_status.reachable:
-        model.add_row(
-            "Requested model",
-            status_text("fail", f"{model_status.model} not installed"),
+        model_rows.append(
+            ("Requested model", status_text("ok", f"{model_status.model} installed"))
         )
-        model.add_row(
-            "Recovery",
-            _plain(f"optional manual install: ollama pull {model_status.model}"),
+    elif model_status.reachable:
+        model_rows.append(
+            ("Requested model", status_text("fail", f"{model_status.model} not installed"))
+        )
+        model_rows.append(
+            (
+                "Recovery",
+                f"optional manual install: ollama pull {model_status.model}",
+            )
         )
     else:
-        model.add_row(
-            "Requested model",
-            status_text("warn", f"{model_status.model} (cannot verify)"),
+        model_rows.append(
+            ("Requested model", status_text("warn", f"{model_status.model} (cannot verify)"))
         )
-        model.add_row(
-            "Recovery",
-            _plain("start Ollama with `ollama serve`, then retry"),
+        model_rows.append(
+            ("Recovery", "start Ollama with `ollama serve`, then retry")
         )
-    model.add_row(
-        "Installed models",
-        _plain(", ".join(model_status.models) if model_status.models else "none reported"),
+    model_rows.append(
+        (
+            "Installed models",
+            ", ".join(model_status.models) if model_status.models else "none reported",
+        )
     )
     if model_status.error:
-        model.add_row("Error", status_text("fail", sanitize_output(model_status.error)))
-    renderer.print(model)
+        model_rows.append(
+            ("Error", status_text("fail", sanitize_output(model_status.error)))
+        )
+    renderer.fields("Local model", model_rows)
 
-    archive = renderer.table("Memory archive", ["Check", "Result"])
-    archive.add_row(
-        "Integrity",
-        status_text("ok" if health.ok else "fail", "ok" if health.ok else "failed"),
-    )
-    archive.add_row(
-        "Schema version",
-        _plain(str(health.schema_version) if health.schema_version is not None else "unknown"),
-    )
-    archive.add_row("Memories", _plain(str(health.memory_count)))
-    archive.add_row("Interpretations", _plain(str(health.interpretation_count)))
-    archive.add_row("Path", _plain(health.path))
+    archive_rows: list[tuple[object, object]] = [
+        (
+            "Integrity",
+            status_text("ok" if health.ok else "fail", "ok" if health.ok else "failed"),
+        ),
+        (
+            "Schema version",
+            str(health.schema_version) if health.schema_version is not None else "unknown",
+        ),
+        ("Memories", str(health.memory_count)),
+        ("Interpretations", str(health.interpretation_count)),
+        ("Path", health.path),
+    ]
     if health.error:
-        archive.add_row("Error", status_text("fail", sanitize_output(health.error)))
-    renderer.print(archive)
+        archive_rows.append(
+            ("Error", status_text("fail", sanitize_output(health.error)))
+        )
+    renderer.fields("Memory archive", archive_rows)
 
 
 def _format_bytes(value: int) -> str:
@@ -164,67 +239,71 @@ def render_inspection(
     panels. Every dynamic string is sanitized before it reaches Rich.
     """
 
-    scan = renderer.table("Scan", ["Metric", "Value"])
-    scan.add_row("Root", _plain(report.root))
-    scan.add_row("Kind", _plain(report.root_kind))
-    scan.add_row(
-        "Text files read",
-        _plain(f"{len(report.files)} (limit {report.limits.max_files})"),
+    renderer.section(
+        "Inspection",
+        detail=f"{report.root_kind} - read-only, nothing executed",
     )
-    scan.add_row(
-        "Bytes read",
-        _plain(
-            f"{_format_bytes(report.total_bytes)} "
-            f"(limit {report.limits.max_total_bytes:,})"
-        ),
-    )
-    scan.add_row("Skipped entries", _plain(str(len(report.skipped))))
-    scan.add_row("TODO markers", _plain(str(len(report.todos))))
-    scan.add_row(
-        "Truncated",
-        status_text(
-            "warn" if report.truncated else "ok",
-            "yes, limits were reached" if report.truncated else "no",
-        ),
-    )
-    renderer.print(scan)
 
-    signals = renderer.table("Project signals", ["Signal", "Evidence"])
+    renderer.fields(
+        "Scan",
+        [
+            ("Root", report.root),
+            ("Kind", report.root_kind),
+            (
+                "Text files read",
+                f"{len(report.files)} (limit {report.limits.max_files})",
+            ),
+            (
+                "Bytes read",
+                f"{_format_bytes(report.total_bytes)} "
+                f"(limit {report.limits.max_total_bytes:,})",
+            ),
+            ("Skipped entries", str(len(report.skipped))),
+            ("TODO markers", str(len(report.todos))),
+            (
+                "Truncated",
+                status_text(
+                    "warn" if report.truncated else "ok",
+                    "yes, limits were reached" if report.truncated else "no",
+                ),
+            ),
+        ],
+    )
+
+    signal_rows: list[tuple[object, object]] = []
     if report.readme_path:
-        signals.add_row("README", _plain(report.readme_path))
+        signal_rows.append(("README", report.readme_path))
     for label, value in report.metadata:
-        signals.add_row(_plain(label), _plain(value))
+        signal_rows.append((label, value))
     if report.extension_counts:
-        signals.add_row(
-            "File types",
-            _plain(
+        signal_rows.append(
+            (
+                "File types",
                 ", ".join(
                     f"{extension} ({count})"
                     for extension, count in report.extension_counts[:10]
-                )
-            ),
+                ),
+            )
         )
     if report.entry_points:
-        signals.add_row(
-            "Likely entry points", _plain(", ".join(report.entry_points[:8]))
-        )
+        signal_rows.append(("Likely entry points", ", ".join(report.entry_points[:8])))
     if report.test_files:
-        signals.add_row(
-            "Tests",
-            _plain(f"{len(report.test_files)} file(s), e.g. {report.test_files[0]}"),
+        signal_rows.append(
+            ("Tests", f"{len(report.test_files)} file(s), e.g. {report.test_files[0]}")
         )
-    if signals.row_count:
-        renderer.print(signals)
+    if signal_rows:
+        renderer.fields("Project signals", signal_rows)
 
     if report.todos:
-        markers = renderer.table(
-            "TODO markers (scanner-confirmed)",
-            ["Location", "Tag", "Text"],
+        renderer.section(
+            "TODO markers",
+            detail=f"scanner-confirmed - {plural(len(report.todos), 'marker')}",
         )
+        markers = renderer.table(None, ["Location", "Tag", "Text"])
         for item in report.todos[:50]:
             markers.add_row(
-                _plain(f"{item.path}:{item.line}"),
-                _plain(item.tag),
+                Text(f"{item.path}:{item.line}", style="phantom.accent"),
+                Text(item.tag, style="phantom.warn"),
                 _plain(item.text),
             )
         renderer.print(markers)
@@ -232,14 +311,16 @@ def render_inspection(
             renderer.note(f"... {len(report.todos) - 50} more markers not shown.")
 
     if report.skipped:
-        skipped = renderer.table(
-            "Skipped entries (nothing was read)",
-            ["Reason", "Count", "Detail", "Examples"],
+        renderer.section(
+            "Skipped entries",
+            detail=f"nothing was read - {plural(len(report.skipped), 'entry', 'entries')}",
         )
+        skipped = renderer.table(None, ["Reason", "Count", "Detail", "Examples"])
+        skipped.columns[1].justify = "right"
         for reason, count, detail, examples in _group_skips(report):
             skipped.add_row(
                 _plain(reason),
-                _plain(str(count)),
+                Text(str(count), style="phantom.muted"),
                 _plain(detail),
                 _plain(", ".join(examples)),
             )
@@ -264,16 +345,18 @@ def render_inspection(
     renderer.panel(
         observations or "- No observations were recorded.",
         title="Confirmed observations (scanner)",
+        subtitle="verified evidence",
     )
 
     if report.injection_markers:
-        injection_table = renderer.table(
-            "Instruction-like text (data only, ignored)",
-            ["Location", "Text"],
+        renderer.section(
+            "Instruction-like text",
+            detail="treated as data, never followed",
         )
+        injection_table = renderer.table(None, ["Location", "Text"])
         for marker in report.injection_markers[:20]:
             injection_table.add_row(
-                _plain(f"{marker.path}:{marker.line}"),
+                Text(f"{marker.path}:{marker.line}", style="phantom.accent"),
                 _plain(marker.text),
             )
         renderer.print(injection_table)
@@ -293,13 +376,14 @@ def render_inspection(
             border_style="phantom.warn",
         )
         if analysis.unsupported_citations:
-            citations = renderer.table(
-                "Unsupported model citations",
-                ["Citation", "Problem"],
-            )
+            renderer.section("Unsupported model citations", detail="not found on disk")
+            citations = renderer.table(None, ["Citation", "Problem"])
             for citation in analysis.unsupported_citations:
                 url, _, problem = citation.partition(" ")
-                citations.add_row(_plain(url), _plain(problem.strip("()")))
+                citations.add_row(
+                    Text(url, style="phantom.accent"),
+                    _plain(problem.strip("()")),
+                )
             renderer.print(citations)
         if analysis.truncated:
             renderer.note(

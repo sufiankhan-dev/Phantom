@@ -7,7 +7,7 @@ import importlib
 import os
 import sys
 import traceback
-from typing import Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 from core.brain import (
     Brain,
@@ -32,12 +32,17 @@ from phantom.errors import (
     EXIT_INTERRUPTED,
     UsageError,
 )
+from phantom.helpdata import COMMANDS as HELP_COMMANDS
+from phantom.helpdata import build_epilog
 from phantom.inspection import (
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_FILES,
     DEFAULT_MAX_FILE_BYTES,
     DEFAULT_MAX_TOTAL_BYTES,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from phantom.render import Renderer
 
 _COMMAND_MODULES = {
     "awaken": "phantom.commands.awaken",
@@ -50,49 +55,9 @@ _COMMAND_MODULES = {
     "exorcise": "phantom.commands.exorcise",
 }
 
-_EPILOG = """\
-examples:
-  phantom
-  phantom chat
-  phantom inspect .
-  phantom remember "I prefer pytest and short answers."
-  phantom memories
-  phantom forget 1
-  phantom status
-  phantom exorcise
-  phantom --help
+_COMMAND_SUMMARIES = dict(HELP_COMMANDS)
 
-Running `phantom` with no command awakens the entity: it checks local
-dependencies, initializes the archive, and introduces PHANTOM.
-
-model:
-  The default model is qwen3:8b, used directly through the Ollama Python
-  library. Override it with --model NAME or PHANTOM_MODEL.
-  If it is missing, PHANTOM prints `ollama pull qwen3:8b` and stops.
-  It never downloads a model or starts a service on its own.
-
-environment:
-  PHANTOM_MODEL                 model name (default: qwen3:8b)
-  PHANTOM_OLLAMA_HOST           Ollama endpoint (default: http://127.0.0.1:11434)
-  OLLAMA_HOST                   used when PHANTOM_OLLAMA_HOST is unset
-  PHANTOM_DB                    database path (default: ~/.phantom/phantom.db)
-  PHANTOM_HOME                  directory holding phantom.db
-  PHANTOM_TIMEOUT               model read timeout in seconds
-  PHANTOM_ALLOW_REMOTE_OLLAMA=1 permit a non-loopback Ollama host
-
-display:
-  --plain                       ASCII only, no colour, no animation
-  --no-animation                keep styling, skip the short reveals
-  NO_COLOR, TERM=dumb           disable colour and animation
-  redirected stdout             ASCII borders, no animation, real results
-
-development:
-  python -m phantom.main ...    fallback when the console script is not installed
-
-exit codes:
-  0 success   2 invalid input   3 local model unavailable
-  4 database  5 inspection refused or unreadable   130 interrupted
-"""
+_EPILOG = build_epilog()
 
 
 def _positive_int(value: str) -> int:
@@ -203,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     awaken = subparsers.add_parser(
         "awaken",
         parents=[common],
-        help="Check dependencies, open the archive, and introduce PHANTOM.",
+        help=_COMMAND_SUMMARIES["awaken"],
         description=(
             "Display the startup sequence, verify Python and Ollama, initialize "
             "the memory archive, and introduce the entity. This is also what a "
@@ -222,7 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "chat",
         parents=[common],
-        help="Start an interactive, streamed conversation.",
+        help=_COMMAND_SUMMARIES["chat"],
         description=(
             "Start an interactive session. Responses stream from the local "
             "model, history stays in memory for this session only, and slash "
@@ -235,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser(
         "inspect",
         parents=[common],
-        help="Inspect a file or directory in read-only mode.",
+        help=_COMMAND_SUMMARIES["inspect PATH"],
         description=(
             "Scan a user supplied file or directory without modifying or "
             "executing anything. The scanner reports verified evidence with "
@@ -420,6 +385,45 @@ def _translate(exc: Exception) -> CliError | None:
     return None
 
 
+def _wants_top_level_help(tokens: Sequence[str]) -> bool:
+    """Whether ``--help`` belongs to the program, not to a subcommand.
+
+    ``phantom chat --help`` must keep argparse's command specific page, while
+    ``phantom --help`` and ``phantom --model x --help`` get the painted one.
+    """
+
+    for token in tokens:
+        if token in ("-h", "--help"):
+            return True
+        if token in _COMMAND_MODULES or token == "--":
+            return False
+    return False
+
+
+def _make_renderer(
+    *,
+    plain: bool,
+    values: Mapping[str, str],
+    stdout: Any | None,
+    stderr: Any | None,
+) -> "Renderer":
+    """Build the shared renderer for a parsed command or the help page."""
+
+    no_color = (
+        plain
+        or "NO_COLOR" in values
+        or values.get("TERM", "").strip().lower() == "dumb"
+    )
+    from phantom.render import Renderer
+
+    return Renderer(
+        plain=plain,
+        no_color=no_color,
+        file=stdout,
+        error_file=stderr,
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -435,28 +439,34 @@ def main(
     Ollama service or an interactive terminal.
     """
 
+    values = dict(os.environ) if env is None else dict(env)
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
+
+    if _wants_top_level_help(raw_args):
+        # Rich is imported only when the painted page is actually requested,
+        # so the parser keeps working without the optional visual layer.
+        from phantom.help import render_help
+
+        renderer = _make_renderer(
+            plain="--plain" in raw_args,
+            values=values,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        render_help(renderer, parser)
+        return 0
+
     args = parser.parse_args(argv)
     if getattr(args, "command", None) is None:
         # A bare `phantom` (or only global options) is the default experience.
         args.command = "awaken"
 
-    # Rich is imported after parsing so --help works even if the renderer
-    # dependency is missing.
-    from phantom.render import Renderer
-
-    values = dict(os.environ) if env is None else dict(env)
-    plain = bool(getattr(args, "plain", False))
-    no_color = (
-        plain
-        or "NO_COLOR" in values
-        or values.get("TERM", "").strip().lower() == "dumb"
-    )
-    renderer = Renderer(
-        plain=plain,
-        no_color=no_color,
-        file=stdout,
-        error_file=stderr,
+    renderer = _make_renderer(
+        plain=bool(getattr(args, "plain", False)),
+        values=values,
+        stdout=stdout,
+        stderr=stderr,
     )
 
     debug = bool(getattr(args, "debug", False))

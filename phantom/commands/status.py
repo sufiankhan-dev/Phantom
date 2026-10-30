@@ -61,6 +61,7 @@ def run(ctx: CommandContext, args: Any) -> int:
             and model_status.reachable
             and model_status.model_available
         ):
+            ctx.renderer.print()
             ctx.renderer.ok("All local checks passed.")
 
     if not health.ok:

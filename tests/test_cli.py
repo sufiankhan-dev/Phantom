@@ -294,6 +294,35 @@ def test_help_lists_every_command():
     assert "development" in text.lower()
 
 
+def test_painted_help_is_readable_without_a_terminal():
+    out = io.StringIO()
+    code = main(
+        ["--help"],
+        stdout=out,
+        stderr=io.StringIO(),
+        env={"NO_COLOR": "1"},
+    )
+    text = out.getvalue()
+    assert code == 0
+    assert "P H A N T O M" in text
+    for command in COMMANDS:
+        assert command in text
+    assert "PHANTOM_ALLOW_REMOTE_OLLAMA" in text
+    assert "phantom inspect ." in text
+    assert "PHANTOM_MODEL" in text
+    assert "\x1b" not in text
+    assert text.isascii()
+
+
+def test_command_help_still_belongs_to_argparse(capsys):
+    with pytest.raises(SystemExit) as info:
+        main(["chat", "--help"], stdout=io.StringIO(), stderr=io.StringIO())
+    assert info.value.code == 0
+    text = capsys.readouterr().out
+    assert "--model NAME" in text
+    assert "Start an interactive session" in text
+
+
 def test_external_ollama_host_is_refused(tmp_path):
     result = run_cli(["status", "--host", "http://10.1.2.3:11434"], tmp_path)
     assert result.code == 2

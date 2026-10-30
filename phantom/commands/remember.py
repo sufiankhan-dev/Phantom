@@ -39,6 +39,7 @@ def run(ctx: CommandContext, args: Any) -> int:
     )
     ctx.renderer.ok(
         f"Stored {total} {'memory' if total == 1 else 'memories'} in "
-        f"{ctx.settings.db_display}. Nothing left this machine."
+        f"{ctx.settings.db_display}."
     )
+    ctx.renderer.note("Nothing left this machine.")
     return 0
