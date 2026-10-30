@@ -24,7 +24,8 @@ INTRO = (
 
 def run(ctx: CommandContext, args: Any) -> int:
     renderer = ctx.renderer
-    renderer.banner()
+    settings = ctx.settings
+    renderer.banner(animate=settings.animation)
 
     checks: list[tuple[str, Any]] = []
     checks.append(
@@ -47,7 +48,7 @@ def run(ctx: CommandContext, args: Any) -> int:
         )
     )
 
-    with open_store(ctx.settings) as store:
+    with open_store(settings) as store:
         health = store.health()
         checks.append(
             (
@@ -58,7 +59,8 @@ def run(ctx: CommandContext, args: Any) -> int:
 
         brain = ctx.make_brain()
         try:
-            model_status = brain.status()
+            with renderer.progress("Listening for the local model"):
+                model_status = brain.status()
         finally:
             brain.close()
 
@@ -76,7 +78,7 @@ def run(ctx: CommandContext, args: Any) -> int:
             )
         checks.append(("Local model", model_checks))
 
-        table = renderer.table("Awakening", ["Check", "Result"])
+        table = renderer.table("AWAKENING", ["Check", "Result"])
         for name, result in checks:
             table.add_row(name, result)
         renderer.print(table)
@@ -88,7 +90,8 @@ def run(ctx: CommandContext, args: Any) -> int:
             )
             return 4
 
-        if not (model_status.reachable and model_status.model_available):
+        model_ready = model_status.reachable and model_status.model_available
+        if not model_ready:
             if model_status.reachable:
                 hint = (
                     f"Install it with `ollama pull {model_status.model}`. "
@@ -117,13 +120,15 @@ def run(ctx: CommandContext, args: Any) -> int:
 
         renderer.panel(INTRO, title="TRANSMISSION")
 
-        facts = renderer.table("Presence", ["Fact", "Value"])
+        facts = renderer.table("PRESENCE", ["Fact", "Value"])
         facts.add_row(
             "Model",
             Text(f"{model_status.model} via {model_status.host}"),
         )
         facts.add_row("Memories on record", Text(str(health.memory_count)))
         facts.add_row("Internal state", Text(state.label))
+        if health.schema_version is not None:
+            facts.add_row("Archive schema", Text(f"v{health.schema_version}"))
         facts.add_row("Privacy", Text("nothing leaves this machine"))
         renderer.print(facts)
 
@@ -132,7 +137,16 @@ def run(ctx: CommandContext, args: Any) -> int:
             "python -m phantom.main remember \"TEXT\"\n"
             "python -m phantom.main status\n"
             "python -m phantom.main exorcise",
-            title="Next",
+            title="NEXT",
+        )
+
+        renderer.reveal(
+            [
+                "It is awake. It is listening."
+                if model_ready
+                else "It is awake. It is waiting for a model."
+            ],
+            delay=0.05 if settings.animation else 0.0,
         )
 
     return 0

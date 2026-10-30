@@ -4,6 +4,10 @@ Everything visual lives here so commands stay about behaviour. Plain mode
 uses ASCII borders and no colour, and animation is only enabled for an
 interactive terminal. Status words such as ``[ok]`` always accompany colour,
 so meaning survives a monochrome terminal.
+
+Animation is deliberately quiet: a short line-by-line reveal of static ASCII
+art. It never stands in for work, never hides a result, and never claims that
+something happened before the corresponding real operation completed.
 """
 
 from __future__ import annotations
@@ -20,16 +24,30 @@ from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
+from phantom.art import (
+    ART_WIDTH,
+    PHANTOM_ART,
+    PHANTOM_FAREWELL_ART,
+    PHANTOM_FAREWELL_SIGIL,
+    PHANTOM_SIGIL,
+    SIGIL_WIDTH,
+    TAGLINE,
+    TAGLINE_SHORT,
+    TAGLINE_TINY,
+    WORDMARK,
+)
+
 PHANTOM_THEME = Theme(
     {
-        "phantom.title": "bold #b8a6d9",
-        "phantom.ghost": "#8b7fa8",
-        "phantom.muted": "dim #9a9a9a",
-        "phantom.accent": "#7fb7a8",
-        "phantom.ok": "#7fb78a",
-        "phantom.warn": "#d1a86b",
-        "phantom.err": "#c97b7b",
-        "phantom.border": "#5c5470",
+        "phantom.title": "bold #c3b6e6",
+        "phantom.ghost": "#8f86b8",
+        "phantom.body": "#d9d5e4",
+        "phantom.muted": "dim #96a0a8",
+        "phantom.accent": "#79c0b0",
+        "phantom.ok": "#82c39a",
+        "phantom.warn": "#d7b078",
+        "phantom.err": "#d48686",
+        "phantom.border": "#575073",
     }
 )
 
@@ -43,13 +61,9 @@ _MARKERS: dict[str, tuple[str, str]] = {
 _ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
-_GHOST = (
-    "      .-------.",
-    "     /  o   o  \\",
-    "    |     ^     |",
-    "    |   \\___/   |",
-    "     \\_________/",
-)
+_ART_DELAY = 0.03
+_SIGIL_DELAY = 0.05
+_RULE_CHARACTER = "-"
 
 
 def sanitize_output(value: object) -> str:
@@ -72,8 +86,20 @@ def status_text(state: str, detail: str | None = None) -> Text:
     marker, style = _MARKERS.get(state, _MARKERS["info"])
     text = Text(marker, style=style)
     if detail:
-        text.append(f" {detail}")
+        text.append(f" {sanitize_output(detail)}")
     return text
+
+
+def _art_line(line: str) -> Text:
+    """Style one ASCII art line, giving the eyes a small teal glint."""
+
+    row = Text(line, style="phantom.ghost")
+    for index, character in enumerate(line):
+        if character == "o":
+            row.stylize("bold phantom.accent", index, index + 1)
+        elif character == "^":
+            row.stylize("phantom.title", index, index + 1)
+    return row
 
 
 class Renderer:
@@ -114,18 +140,29 @@ class Renderer:
     # -- primitives -----------------------------------------------------
 
     @property
+    def styled(self) -> bool:
+        """Whether borders may use Unicode and animations may run."""
+
+        return not self.plain and self.console.is_terminal
+
+    @property
     def panel_box(self) -> box.Box:
-        return box.ASCII if self.plain else box.ROUNDED
+        return box.ROUNDED if self.styled else box.ASCII
 
     @property
     def table_box(self) -> box.Box:
-        return box.ASCII if self.plain else box.SIMPLE_HEAD
+        return box.SIMPLE_HEAD if self.styled else box.ASCII
 
     def print(self, *objects: object, **kwargs: object) -> None:
         self.console.print(*objects, **kwargs)
 
     def note(self, message: str) -> None:
-        self.console.print(Text(message, style="phantom.muted"))
+        self.console.print(Text(sanitize_output(message), style="phantom.muted"))
+
+    def info(self, message: str) -> None:
+        """Print a status marker for a real, completed measurement."""
+
+        self.console.print(status_text("info", message))
 
     def write_raw(self, text: str) -> None:
         """Write text without Rich wrapping, for machine-readable output."""
@@ -138,7 +175,8 @@ class Renderer:
 
     def rule(self, label: str | None = None) -> None:
         self.console.rule(
-            Text(label, style="phantom.muted") if label else None,
+            Text(sanitize_output(label), style="phantom.muted") if label else None,
+            characters=_RULE_CHARACTER,
             style="phantom.border",
         )
 
@@ -152,11 +190,15 @@ class Renderer:
         """
 
         label = sanitize_output(message)
-        if self.plain or not self.console.is_terminal:
+        if not self.styled:
             self.note(f"... {label}")
             yield
             return
-        with self.console.status(Text(label, style="phantom.muted"), spinner="dots"):
+        with self.console.status(
+            Text(label, style="phantom.muted"),
+            spinner="simpleDots",
+            spinner_style="phantom.accent",
+        ):
             yield
 
     def ok(self, message: str) -> None:
@@ -167,7 +209,7 @@ class Renderer:
         self.console.print(
             Panel(
                 body,
-                title=Text(title, style="phantom.warn"),
+                title=Text(sanitize_output(title), style="phantom.warn"),
                 border_style="phantom.warn",
                 box=self.panel_box,
                 padding=(0, 1),
@@ -178,11 +220,12 @@ class Renderer:
         body = Text(sanitize_output(message), style="phantom.err")
         if hint:
             body.append("\n\n", style="phantom.muted")
+            body.append("hint: ", style="phantom.muted")
             body.append(sanitize_output(hint), style="phantom.muted")
         self.error_console.print(
             Panel(
                 body,
-                title=Text(title, style="phantom.err"),
+                title=Text(sanitize_output(title), style="phantom.err"),
                 border_style="phantom.err",
                 box=self.panel_box,
                 padding=(0, 1),
@@ -207,9 +250,15 @@ class Renderer:
         self.console.print(
             Panel(
                 content,
-                title=Text(title, style="phantom.title") if title else None,
+                title=(
+                    Text(sanitize_output(title), style="phantom.title")
+                    if title
+                    else None
+                ),
                 subtitle=(
-                    Text(subtitle, style="phantom.muted") if subtitle else None
+                    Text(sanitize_output(subtitle), style="phantom.muted")
+                    if subtitle
+                    else None
                 ),
                 border_style=border_style,
                 box=self.panel_box,
@@ -225,7 +274,11 @@ class Renderer:
         show_lines: bool = False,
     ) -> Table:
         table = Table(
-            title=Text(title, style="phantom.title") if title else None,
+            title=(
+                Text(sanitize_output(title), style="phantom.title")
+                if title
+                else None
+            ),
             box=self.table_box,
             header_style="phantom.title",
             title_justify="left",
@@ -234,24 +287,90 @@ class Renderer:
             pad_edge=False,
         )
         for column in columns:
-            table.add_column(Text(column), overflow="fold", no_wrap=False)
+            table.add_column(
+                Text(sanitize_output(column)),
+                overflow="fold",
+                no_wrap=False,
+            )
         return table
 
     # -- composed views -------------------------------------------------
 
-    def banner(self) -> None:
-        self.console.print(Text("\n".join(_GHOST), style="phantom.ghost"))
-        self.console.print(Text("P H A N T O M", style="phantom.title"))
+    def banner(self, *, animate: bool = False) -> None:
+        """Print the PHANTOM mark.
+
+        The full ghost is used on a styled terminal wide enough for it; a
+        compact sigil is used in plain mode, narrow terminals, and redirected
+        output so the mark never wraps into noise.
+        """
+
+        animate = animate and self.styled
+        width = self.console.width
+        if self.styled and width >= ART_WIDTH + 2:
+            for line in PHANTOM_ART:
+                self.console.print(_art_line(line))
+                if animate:
+                    time.sleep(_ART_DELAY)
+            self.console.print()
+        elif width >= SIGIL_WIDTH + 2:
+            for line in PHANTOM_SIGIL:
+                self.console.print(_art_line(line))
+                if animate:
+                    time.sleep(_SIGIL_DELAY)
+            self.console.print()
+
         self.console.print(
-            Text("local intelligence / no cloud / no leash", style="phantom.muted")
+            Text(
+                WORDMARK if width >= len(WORDMARK) else "PHANTOM",
+                style="phantom.title",
+            )
         )
+        if width >= len(TAGLINE):
+            tagline = TAGLINE
+        elif width >= len(TAGLINE_SHORT):
+            tagline = TAGLINE_SHORT
+        else:
+            tagline = TAGLINE_TINY
+        self.console.print(Text(tagline, style="phantom.muted"))
+
+    def sigil(self, *, farewell: bool = False, animate: bool = False) -> None:
+        """Print the compact three-line mark used inside a session."""
+
+        lines = PHANTOM_FAREWELL_SIGIL if farewell else PHANTOM_SIGIL
+        animate = animate and self.styled
+        for line in lines:
+            self.console.print(_art_line(line))
+            if animate:
+                time.sleep(_SIGIL_DELAY)
+
+    def farewell(self, *, animate: bool = False) -> None:
+        """Print a slow, closed-eye mark for shutdown.
+
+        The full mark is used only where it fits and where styling is
+        available. Plain and redirected output gets the compact sigil.
+        """
+
+        if self.styled and self.console.width >= ART_WIDTH + 2:
+            animate = animate and self.styled
+            for line in PHANTOM_FAREWELL_ART:
+                self.console.print(_art_line(line))
+                if animate:
+                    time.sleep(_ART_DELAY)
+        else:
+            self.sigil(farewell=True, animate=animate)
+        self.console.print()
 
     def reveal(self, lines: Iterable[str], *, delay: float = 0.06) -> None:
-        """Print lines slowly only when animation is safe."""
+        """Print lines slowly only when animation is safe.
 
+        ``delay`` is a request, not a guarantee. Plain mode, a redirected
+        stream, and a non-terminal never sleep.
+        """
+
+        animate = delay > 0 and self.styled
         for line in lines:
             self.console.print(Text(sanitize_output(line), style="phantom.muted"))
-            if delay > 0:
+            if animate:
                 time.sleep(delay)
 
     # -- streaming ------------------------------------------------------
@@ -263,7 +382,12 @@ class Renderer:
     def stream_chunk(self, text: str) -> None:
         if not text:
             return
-        self.console.print(Text(text), end="", markup=False, highlight=False)
+        self.console.print(
+            Text(text, style="phantom.body"),
+            end="",
+            markup=False,
+            highlight=False,
+        )
         self._flush()
 
     def end_reply(self) -> None:

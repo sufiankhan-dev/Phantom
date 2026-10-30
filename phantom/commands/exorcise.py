@@ -46,6 +46,7 @@ def run(ctx: CommandContext, args: Any) -> int:
         "The light behind the cursor thins.",
         "The session ends; the archive does not.",
     )
+    renderer.farewell(animate=settings.animation)
     renderer.reveal(lines, delay=0.12 if settings.animation else 0.0)
 
     table = renderer.table("Shutdown", ["Fact", "Value"])
@@ -65,4 +66,5 @@ def run(ctx: CommandContext, args: Any) -> int:
         "PHANTOM is not gone. It is only not running.",
         title="Until next time",
     )
+    renderer.rule("the cursor goes dark")
     return 0

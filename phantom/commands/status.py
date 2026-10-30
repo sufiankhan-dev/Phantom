@@ -11,17 +11,22 @@ from phantom.views import render_status
 
 
 def run(ctx: CommandContext, args: Any) -> int:
+    json_output = bool(getattr(args, "json", False))
     with open_store(ctx.settings) as store:
         health = store.health()
         mood = load_mood(store)
         brain = ctx.make_brain()
         try:
-            model_status = brain.status()
+            if json_output:
+                model_status = brain.status()
+            else:
+                with ctx.renderer.progress("Listening for the local model"):
+                    model_status = brain.status()
         finally:
             brain.close()
 
     settings = ctx.settings
-    if getattr(args, "json", False):
+    if json_output:
         payload = {
             "model": {
                 "name": settings.brain.model,
@@ -51,6 +56,12 @@ def run(ctx: CommandContext, args: Any) -> int:
         ctx.renderer.write_raw(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         render_status(ctx.renderer, settings, model_status, health, mood)
+        if (
+            health.ok
+            and model_status.reachable
+            and model_status.model_available
+        ):
+            ctx.renderer.ok("All local checks passed.")
 
     if not health.ok:
         return 4

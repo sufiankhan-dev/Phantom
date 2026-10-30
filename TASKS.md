@@ -1,16 +1,19 @@
 # PHANTOM — Implementation Tasks
 
-**Status:** CLI and inspection implemented (2026-10-29). The `core/` inference,
-memory, and personality modules are in place, and `phantom/` provides the
-argparse CLI, Rich rendering, chat session, all eight command handlers, and the
-read-only `phantom/inspection.py` scanner. Project inspection (M5) is complete.
-The milestone checklists below are the original plan; this status section is the
-current truth.
+**Status:** CLI, inspection, and terminal presentation implemented (2026-10-29).
+The `core/` inference, memory, and personality modules are in place, and
+`phantom/` provides the argparse CLI, Rich rendering, chat session, all eight
+command handlers, the read-only `phantom/inspection.py` scanner, and the custom
+ASCII identity in `phantom/art.py`. Milestones M0-M6 are complete. The milestone
+checklists below are the original plan; this status section is the current truth.
 
-**Implemented:** `awaken`, `chat`, `inspect` (read-only scan, evidence report,
-optional local-model interpretation, configurable limits), `remember`,
-`memories`, `forget`, `status`, `exorcise`; global options before or after the
-subcommand; plain mode; JSON status; typed exit codes; 165 passing tests plus 2
+**Implemented:** `awaken` (animated mark, real checks, introduction), `chat`
+(sigil, real streaming, measured token receipt, slash commands), `inspect`
+(read-only scan, evidence report, optional local-model interpretation,
+configurable limits), `remember`, `memories`, `forget`, `status`, `exorcise`
+(closed-eye mark, real shutdown summary, final rule); global options before or
+after the subcommand; plain mode; animation gating for non-TTY, `NO_COLOR`, and
+`TERM=dumb`; JSON status; typed exit codes; 180 passing tests plus 2
 environment-skipped symlink tests.
 
 **Still open:** README demo recording, license, git remote, live model smoke
@@ -120,12 +123,25 @@ Dependency direction: `main -> cli -> commands -> {config, memory, ollama_client
 
 ### M6 — Terminal presentation and animations
 
-- [ ] Rich theme with muted ash/violet/teal/ember colors, ghost ASCII art, clear `[ok]`/`[!]`/`[x]` status words (not color-only).
-- [ ] `awaken` startup panel with real dependency checks; `chat` streaming renderer; `inspect` tree/table/panel report; `memories` table; `status` table; `exorcise` shutdown summary.
-- [ ] Streaming: throttled Markdown Live rendering when interactive, raw chunk fallback otherwise; sanitize ANSI/control sequences from model and file text before display.
-- [ ] Animations: short, optional, cancellable, never block work, never hide errors, never imply fake progress. Disable for `--plain`, `NO_COLOR`, `TERM=dumb`, non-TTY, or `--no-animation`.
-- [ ] `--plain` output is line-oriented, ASCII-only where needed, and fully usable.
-- **Acceptance:** non-TTY and `NO_COLOR` output contains no ANSI; `--plain` completes every command; a simulated backend failure still prints the error immediately; manual demo run is recorded.
+- [x] Rich theme with muted ash/violet/teal/ember colors, custom ghost ASCII art
+  (full mark plus compact sigil), and clear `[ok]`/`[!]`/`[x]`/`[i]` status
+  words that do not depend on color.
+- [x] `awaken` startup sequence with a short optional reveal; `chat` streaming
+  renderer with a compact opening mark and real measured receipt; `inspect`
+  tree/table/panel report; `memories` table; `status` table; `exorcise`
+  closed-eye shutdown mark and real summary.
+- [x] Streaming: direct chunk rendering as the model delivers it, with
+  sanitization, a styled body, and no artificial typing delay. Metrics are
+  shown only when Ollama reports them.
+- [x] Animations: short, optional, cancellable, and never blocking work. They
+  are disabled for `--plain`, `NO_COLOR`, `TERM=dumb`, non-TTY output, and
+  `--no-animation`, and never imply progress that did not occur.
+- [x] `--plain` output is line-oriented, ASCII-only, and fully usable.
+- **Acceptance:** non-TTY and `NO_COLOR` output contains no ANSI; `--plain`
+  completes every command; a simulated backend failure still prints the error
+  immediately; 180 tests pass on Windows (2 symlink tests skipped by the
+  environment). A manual styled and plain demonstration run is recorded in the
+  README plan.
 
 ### M7 — Hardening, documentation, and release
 

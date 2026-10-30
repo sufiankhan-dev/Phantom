@@ -16,9 +16,10 @@ def run(ctx: CommandContext, args: Any) -> int:
     try:
         with open_store(ctx.settings) as store:
             try:
-                brain.ensure_ready()
+                with ctx.renderer.progress("Checking the local model"):
+                    brain.ensure_ready()
             except BrainError as exc:
-                ctx.renderer.error(str(exc))
+                ctx.renderer.error(str(exc), title="Local model unavailable")
                 return 3
 
             session = ChatSession(

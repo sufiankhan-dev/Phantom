@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from core.brain import Brain, BrainError, StreamInterruptedError
+from core.brain import Brain, BrainError, StreamChunk, StreamInterruptedError
 from core.memory import MemoryStore, PhantomMemoryError
 from core.personality import (
     MemoryNote,
@@ -66,6 +66,7 @@ class ChatSession:
         """Run the read/stream loop until the user leaves."""
 
         self._record(MoodEvent.SESSION_START)
+        self.renderer.sigil(animate=self.settings.animation)
         self.renderer.panel(
             "The cursor waits.\n"
             "Ask a question, or use /help. Nothing you type is persisted "
@@ -96,6 +97,7 @@ class ChatSession:
 
         self._record(MoodEvent.EXORCISE)
         self._closing_note()
+        self.renderer.rule("until next time")
         return 0
 
     def _closing_note(self) -> None:
@@ -123,8 +125,10 @@ class ChatSession:
 
         self.renderer.begin_reply()
         parts: list[str] = []
+        final_chunk: StreamChunk | None = None
         try:
             for chunk in self.brain.stream_chat(messages, system=system):
+                final_chunk = chunk
                 if chunk.content:
                     safe = sanitize_output(chunk.content)
                     if safe:
@@ -138,12 +142,12 @@ class ChatSession:
             return
         except StreamInterruptedError as exc:
             self.renderer.end_reply()
-            self.renderer.error(str(exc))
+            self.renderer.error(str(exc), title="Stream interrupted")
             self._record(MoodEvent.OLLAMA_ERROR, detail=str(exc))
             return
         except BrainError as exc:
             self.renderer.end_reply()
-            self.renderer.error(str(exc))
+            self.renderer.error(str(exc), title="Model error")
             self._record(MoodEvent.OLLAMA_ERROR, detail=str(exc))
             return
         except Exception as exc:  # pragma: no cover - defensive boundary
@@ -166,6 +170,23 @@ class ChatSession:
         self.history.append({"role": "assistant", "content": answer})
         self._trim_history()
         self._record(MoodEvent.CHAT_TURN)
+        self._report_stream_metrics(final_chunk)
+
+    def _report_stream_metrics(self, final_chunk: StreamChunk | None) -> None:
+        """Show only metrics Ollama actually reported for this stream."""
+
+        if final_chunk is None:
+            return
+        details: list[str] = []
+        if final_chunk.eval_count:
+            details.append(f"{final_chunk.eval_count} tokens")
+        rate = final_chunk.tokens_per_second
+        if rate is not None:
+            details.append(f"{rate:.1f} tok/s")
+        if details:
+            self.renderer.info(
+                f"{self.settings.brain.model} - " + " - ".join(details)
+            )
 
     def _relevant_notes(self, user_text: str) -> list[MemoryNote]:
         try:

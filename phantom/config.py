@@ -76,10 +76,13 @@ def settings_from_args(
     plain = bool(getattr(args, "plain", False))
     stream = stdout if stdout is not None else sys.stdout
     is_interactive = bool(getattr(stream, "isatty", lambda: False)())
+    term = values.get("TERM", "").strip().lower()
     animation = (
         bool(getattr(args, "animation", True))
         and is_interactive
         and not plain
+        and "NO_COLOR" not in values
+        and term != "dumb"
     )
 
     return Settings(

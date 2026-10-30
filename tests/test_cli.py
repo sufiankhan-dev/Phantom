@@ -503,6 +503,8 @@ def test_awaken_initializes_storage_and_introduces_the_entity(tmp_path):
     result = run_cli(["awaken", "--plain"], tmp_path)
     assert result.code == 0
     assert (tmp_path / "phantom.db").exists()
+    assert "P H A N T O M" in result.out
+    assert "(  o o  )" in result.out
     assert "TRANSMISSION" in result.out
     assert "[ok] qwen3:8b available" in result.out
     assert "Memories on record" in result.out
@@ -542,6 +544,53 @@ def test_awaken_fails_on_a_corrupt_archive(tmp_path):
     assert result.code == 4
 
 
+class FakeTTY(io.StringIO):
+    """A writable stream that claims to be an interactive terminal."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def _run_awaken_on_a_terminal(tmp_path, monkeypatch, *flags):
+    from phantom import render as render_module
+
+    delays: list[float] = []
+    monkeypatch.setattr(render_module.time, "sleep", delays.append)
+    out = FakeTTY()
+    code = main(
+        ["awaken", *flags],
+        stdout=out,
+        stderr=io.StringIO(),
+        env={
+            "PHANTOM_DB": str(tmp_path / "phantom.db"),
+            "TERM": "xterm-256color",
+        },
+        brain_factory=lambda settings: FakeBrain(
+            model=settings.brain.model,
+            host=settings.brain.host,
+        ),
+    )
+    return code, out.getvalue(), delays
+
+
+def test_awaken_no_animation_never_sleeps(tmp_path, monkeypatch):
+    code, out, delays = _run_awaken_on_a_terminal(
+        tmp_path, monkeypatch, "--no-animation"
+    )
+    assert code == 0
+    assert delays == []
+    assert "It is awake." in out
+
+
+def test_awaken_animation_is_short_and_bounded(tmp_path, monkeypatch):
+    code, out, delays = _run_awaken_on_a_terminal(tmp_path, monkeypatch)
+    assert code == 0
+    assert delays, "the awakening mark should be revealed line by line"
+    assert max(delays) <= 0.12
+    assert sum(delays) < 2.0
+    assert "It is awake." in out
+
+
 # -- exorcise ---------------------------------------------------------
 
 
@@ -560,6 +609,14 @@ def test_exorcise_does_not_create_an_archive(tmp_path):
     assert result.code == 0
     assert "0 memories remain" in result.out
     assert not (tmp_path / "phantom.db").exists()
+
+
+def test_exorcise_shows_the_closed_mark_and_closes_cleanly(tmp_path):
+    result = run_cli(["exorcise", "--plain"], tmp_path)
+    assert result.code == 0
+    assert "(  - -  )" in result.out
+    assert "the cursor goes dark" in result.out
+    assert "\x1b" not in result.out
 
 
 # -- inspect ----------------------------------------------------------
@@ -625,6 +682,46 @@ def test_chat_streams_and_keeps_bounded_history(tmp_path):
     mood = read_mood(tmp_path)
     assert mood is not None
     assert "conversation turn" in mood["evidence"]
+
+
+def test_chat_reports_only_measured_stream_metrics(tmp_path):
+    brain = FakeBrain(
+        chunks=(
+            StreamChunk("Measured."),
+            StreamChunk(
+                "",
+                done=True,
+                eval_count=10,
+                eval_duration_ns=2_000_000_000,
+            ),
+        )
+    )
+    result = run_cli(
+        ["chat", "--plain"],
+        tmp_path,
+        brain=brain,
+        input_lines=["hello", "/exit"],
+    )
+
+    assert result.code == 0
+    assert "Measured." in result.out
+    assert "10 tokens" in result.out
+    assert "5.0 tok/s" in result.out
+
+
+def test_chat_does_not_invent_stream_metrics(tmp_path):
+    brain = FakeBrain(chunks=(StreamChunk("No measurement."),))
+    result = run_cli(
+        ["chat", "--plain"],
+        tmp_path,
+        brain=brain,
+        input_lines=["hello", "/exit"],
+    )
+
+    assert result.code == 0
+    assert "No measurement." in result.out
+    assert "tok/s" not in result.out
+    assert "tokens" not in result.out
 
 
 def test_chat_supplies_relevant_memories_to_the_prompt(tmp_path):
@@ -748,6 +845,31 @@ def test_chat_handles_eof_cleanly(tmp_path):
     result = run_cli(["chat", "--plain"], tmp_path, input_lines=[])
     assert result.code == 0
     assert "transcript was not saved" in result.out
+
+
+def test_chat_handles_ctrl_c_at_the_prompt_cleanly(tmp_path):
+    def interrupt(prompt: str) -> str:
+        raise KeyboardInterrupt
+
+    result = run_cli(
+        ["chat", "--plain"],
+        tmp_path,
+        input_func=interrupt,
+    )
+    assert result.code == 0
+    assert "transcript was not saved" in result.out
+    assert "Traceback" not in result.out
+    assert "Traceback" not in result.err
+
+
+def test_keyboard_interrupt_during_a_check_exits_130(tmp_path):
+    class InterruptingStatusBrain(FakeBrain):
+        def status(self):
+            raise KeyboardInterrupt
+
+    result = run_cli(["status"], tmp_path, brain=InterruptingStatusBrain())
+    assert result.code == 130
+    assert "Interrupted" in result.err
 
 
 def test_chat_reports_unknown_slash_commands(tmp_path):

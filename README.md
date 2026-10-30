@@ -42,10 +42,55 @@ memory are local.
   memory or failing to reach Ollama. The model never writes its own mood.
 - **Real status checks**: Ollama reachability, installed model presence,
   database integrity, schema version, memory count, and mood.
-- **Consistent Rich presentation** with panels, tables, status markers, ASCII
-  fallback, and a plain output mode.
+- **Coherent terminal identity**: custom PHANTOM ASCII art, a muted
+  violet/ash/teal palette, consistent panels, and `[ok]`/`[!]`/`[x]`/`[i]`
+  status markers that still read in monochrome.
+- **Restrained animation**: a short line-by-line awakening reveal and a
+  closed-eye shutdown mark. Animation is skipped for plain, redirected,
+  `NO_COLOR`, and `TERM=dumb` output.
+- **Honest streaming**: model chunks are written as Ollama delivers them. A
+  small receipt reports tokens and tokens per second only when Ollama actually
+  supplies those metrics.
+- **Plain output mode** for limited terminals: ASCII borders and marks, no
+  ANSI, no animation, and the same real results.
 - **Safe error handling** with actionable hints and no tracebacks unless
   `--debug` is passed.
+
+## Terminal experience
+
+The interface is meant to be memorable in a recording and still usable in a
+plain shell. It follows a few rules:
+
+- **Identity.** A custom ASCII ghost marks the application. A wide, styled
+  terminal gets the full nine-line mark; plain mode, narrow terminals, and
+  redirected output get a compact three-line sigil so nothing wraps into noise.
+  Section titles are short and consistent; awakening and session sections use
+  uppercase labels, and every status has a text marker as well as a colour.
+- **Awakening.** `awaken` reveals the mark line by line, checks Python, the
+  Ollama package, the archive, and the local model, then prints the
+  introduction and a final line that reflects the real model state. The reveal
+  is under a third of a second and can be skipped with `--no-animation`.
+- **Conversation.** `chat` opens with the compact mark and a session panel.
+  Responses stream directly from the model; there is no artificial typing
+  delay and no fabricated activity. When Ollama reports `eval_count` and
+  `eval_duration`, a dim `[i]` receipt shows the measured token count and
+  tokens per second.
+- **Shutdown.** `exorcise` prints the closed-eye mark, two fading lines, a real
+  shutdown summary, and the final rule `the cursor goes dark`. It never deletes
+  anything.
+- **Progress and errors.** Spinners wrap only operations that are actually
+  running. Plain and non-interactive runs print one stable `...` line instead.
+  The spinner stops before any report or error, and errors are always printed
+  in full with an actionable hint.
+- **Interruption and EOF.** `Ctrl+C` during a reply cancels that answer without
+  adding it to history. `Ctrl+C` or `EOF` at the prompt closes the session
+  cleanly. Non-interactive execution therefore ends with a clear closing note
+  rather than a traceback.
+
+Animation is enabled only when stdout is an interactive terminal, `--plain` is
+absent, `NO_COLOR` is unset, `TERM` is not `dumb`, and `--no-animation` is not
+given. Startup and shutdown animations are deliberately short and never delay
+a result that is already available.
 
 ## Architecture
 
@@ -59,6 +104,7 @@ phantom/                  command line presentation
   main.py                 entry point for python -m phantom.main
   cli.py                  argparse tree, dispatch, exit codes
   config.py               CLI > environment > defaults
+  art.py                  custom ASCII marks and the compact sigil
   render.py               Rich theme, panels, tables, streaming, plain mode
   views.py                shared status, memory, and inspection tables
   storage.py              archive and mood helpers
@@ -137,8 +183,10 @@ python -m phantom.main awaken
 ```
 
 Displays the startup sequence, checks Python, the Ollama package, the memory
-archive, and the local model, initializes storage, and introduces PHANTOM. A
-missing model is a warning; use `--strict` to make it exit 3.
+archive, and the local model, initializes storage, and introduces PHANTOM. The
+ASCII mark reveals briefly when animation is safe; the real check results are
+shown as they complete. A missing model is a warning; use `--strict` to make it
+exit 3.
 
 ### `chat`
 
@@ -147,8 +195,10 @@ python -m phantom.main chat
 python -m phantom.main chat --model gemma3:4b
 ```
 
-Starts an interactive session. Responses stream from the local model. History
-is kept only in memory for this session. Slash commands:
+Starts an interactive session. Responses stream from the local model as they
+arrive; no artificial typing delay is added. When Ollama reports token metrics,
+a dim receipt shows the measured token count and tokens per second. History is
+kept only in memory for this session. Slash commands:
 
 | Command | Effect |
 | --- | --- |
@@ -162,7 +212,8 @@ is kept only in memory for this session. Slash commands:
 | `/exit`, `/quit`, `/bye` | Close the session |
 
 `Ctrl+C` during a response cancels that answer without adding it to history.
-`Ctrl+C` or `Ctrl+Z` at the prompt closes the session cleanly.
+`Ctrl+C` at the prompt, `Ctrl+Z` followed by Enter on Windows, or end-of-input
+closes the session cleanly.
 
 ### `inspect PATH`
 
@@ -267,8 +318,9 @@ unavailable, `4` archive problem.
 python -m phantom.main exorcise
 ```
 
-Prints an atmospheric shutdown summary. It never deletes files or memories and
-reports how many memories remain.
+Prints the closed-eye ASCII mark, two fading lines, a real shutdown summary,
+and the final rule `the cursor goes dark`. It never deletes files or memories
+and reports how many memories remain.
 
 ## Exit codes
 
@@ -309,15 +361,19 @@ reports how many memories remain.
 python -m pytest
 ```
 
-The suite covers the core engine, the CLI, and the inspection scanner. Ollama is
-mocked in CLI tests, so no running model, network access, or real user archive
-is required. Tests use temporary directories and never touch `~/.phantom` or a
-real project tree.
+The suite covers the core engine, the CLI, the inspection scanner, and the
+rendering boundary. Ollama is mocked in CLI tests, so no running model, network
+access, or real user archive is required. Tests use temporary directories and
+never touch `~/.phantom` or a real project tree. Rendering tests verify that
+plain mode is ASCII-only, narrow terminals fall back to the compact mark,
+animation never sleeps on a redirected or plain stream, and chat metrics are
+printed only when the model actually reports them.
 
-Current suite: **165 tests passing, 2 skipped** on Windows (symlink creation
+Current suite: **180 tests passing, 2 skipped** on Windows (symlink creation
 requires a privilege that the test environment does not have; a separate
 root-containment test still runs). Live `inspect` inference was also checked
-against local `qwen3:8b`.
+against local `qwen3:8b`, and `chat` was run with `gemma3:4b` to confirm real
+streaming and measured token receipts.
 
 ## Known limitations
 
@@ -342,19 +398,23 @@ against local `qwen3:8b`.
 
 ## Demonstration plan
 
-1. `python -m phantom.main awaken` - show real dependency checks and the
-   introduction.
+1. `python -m phantom.main awaken` - show the ASCII mark, the real dependency
+   checks, and the introduction.
 2. `python -m phantom.main remember "I prefer pytest and short answers."`
 3. `python -m phantom.main memories` - show the ID, timestamp, and user origin.
-4. `python -m phantom.main chat` - ask a programming question, show streaming,
-   then ask something that uses the stored memory.
+4. `python -m phantom.main chat` - ask a programming question, show real
+   streaming and the measured token receipt, then ask something that uses the
+   stored memory.
 5. `python -m phantom.main inspect . --no-ai` - show confirmed findings, a
    skipped secret, and TODO locations, then run without `--no-ai` to show the
    clearly separated model interpretation.
 6. `python -m phantom.main status` - show the model, archive health, and count.
 7. `python -m phantom.main forget <id>` - demonstrate confirmation.
-8. `python -m phantom.main exorcise` - show that memories remain.
+8. `python -m phantom.main exorcise` - show the closed-eye mark, the shutdown
+   summary, and that memories remain.
 9. Restart and run `memories` again to prove persistence across sessions.
+10. `python -m phantom.main awaken --plain --no-animation` - show the ASCII
+    fallback and confirm that the same real checks appear without animation.
 
 ## License
 

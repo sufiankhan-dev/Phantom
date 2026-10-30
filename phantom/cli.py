@@ -69,7 +69,12 @@ environment:
   PHANTOM_HOME                  directory holding phantom.db
   PHANTOM_TIMEOUT               model read timeout in seconds
   PHANTOM_ALLOW_REMOTE_OLLAMA=1 permit a non-loopback Ollama host
-  NO_COLOR                      disable colour
+
+display:
+  --plain                       ASCII only, no colour, no animation
+  --no-animation                keep styling, skip the short reveals
+  NO_COLOR, TERM=dumb           disable colour and animation
+  redirected stdout             ASCII borders, no animation, real results
 
 exit codes:
   0 success   2 invalid input   3 local model unavailable
