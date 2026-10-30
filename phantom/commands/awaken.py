@@ -133,10 +133,11 @@ def run(ctx: CommandContext, args: Any) -> int:
         renderer.print(facts)
 
         renderer.panel(
-            "python -m phantom.main chat\n"
-            "python -m phantom.main remember \"TEXT\"\n"
-            "python -m phantom.main status\n"
-            "python -m phantom.main exorcise",
+            "phantom chat\n"
+            'phantom remember "TEXT"\n'
+            "phantom memories\n"
+            "phantom status\n"
+            "phantom exorcise",
             title="NEXT",
         )
 

@@ -400,7 +400,7 @@ def resolve_inspection_root(raw: str | Path) -> Path:
     if not text:
         raise UsageError(
             "A path is required.",
-            hint="Example: python -m phantom.main inspect .",
+            hint="Example: phantom inspect .",
         )
     if "\x00" in text:
         raise UsageError(

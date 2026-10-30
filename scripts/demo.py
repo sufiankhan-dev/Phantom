@@ -12,6 +12,9 @@ Usage:
 
 Every command is a real CLI invocation in a separate process, which is what
 demonstrates persistence across sessions. Nothing is simulated.
+
+The installed ``phantom`` console script is used when it is on ``PATH``;
+otherwise the script falls back to ``python -m phantom.main``.
 """
 
 from __future__ import annotations
@@ -19,12 +22,14 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PHANTOM_EXECUTABLE = shutil.which("phantom")
 
 SAMPLE_PROJECT: dict[str, str] = {
     "README.md": "# Demo project\n\nA tiny project for the PHANTOM inspection demo.\n",
@@ -111,8 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"archive: {db_path} (temporary)")
         print(f"project: {project} (generated)")
 
-        _step("1. Awakening and real dependency checks")
-        _run([*common, "awaken"])
+        _step("1. Awakening and real dependency checks (bare `phantom`)")
+        _run(common)
 
         _step("2. Storing an explicit memory")
         _run(
@@ -174,9 +179,16 @@ def _run(
     stdin: str | None = None,
     allowed: tuple[int, ...] = (0,),
 ) -> None:
-    print(f"$ python -m phantom.main {shlex.join(args)}", flush=True)
+    if PHANTOM_EXECUTABLE:
+        command = [PHANTOM_EXECUTABLE, *args]
+        shown = f"phantom {shlex.join(args)}"
+    else:
+        # Development fallback when the console script is not installed.
+        command = [sys.executable, "-m", "phantom.main", *args]
+        shown = f"python -m phantom.main {shlex.join(args)}"
+    print(f"$ {shown}", flush=True)
     result = subprocess.run(
-        [sys.executable, "-m", "phantom.main", *args],
+        command,
         cwd=REPO_ROOT,
         input=stdin,
         text=True,

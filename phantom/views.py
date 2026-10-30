@@ -42,9 +42,10 @@ def memory_table(
 ) -> Table:
     """Build the table used by ``memories`` and the ``/memories`` command."""
 
-    table = renderer.table(title, ["ID", "Recorded", "Origin", "Memory"])
-    for record in records:
+    table = renderer.table(title, ["#", "ID", "Recorded", "Origin", "Memory"])
+    for position, record in enumerate(records, start=1):
         table.add_row(
+            _plain(str(position)),
             Text(record.short_id, style="phantom.accent"),
             _plain(format_timestamp(record.created_at)),
             _plain(record.origin),
@@ -92,10 +93,18 @@ def render_status(
             "Requested model",
             status_text("fail", f"{model_status.model} not installed"),
         )
+        model.add_row(
+            "Recovery",
+            _plain(f"optional manual install: ollama pull {model_status.model}"),
+        )
     else:
         model.add_row(
             "Requested model",
             status_text("warn", f"{model_status.model} (cannot verify)"),
+        )
+        model.add_row(
+            "Recovery",
+            _plain("start Ollama with `ollama serve`, then retry"),
         )
     model.add_row(
         "Installed models",

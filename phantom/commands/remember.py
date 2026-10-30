@@ -17,7 +17,7 @@ def run(ctx: CommandContext, args: Any) -> int:
     if not text.strip():
         raise UsageError(
             "Memory text cannot be empty.",
-            hint='Example: python -m phantom.main remember "I prefer pytest."',
+            hint='Example: phantom remember "I prefer pytest."',
         )
 
     with open_store(ctx.settings) as store:

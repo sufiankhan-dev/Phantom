@@ -1,22 +1,29 @@
 # PHANTOM — Implementation Tasks
 
 **Status:** Ready for demo recording and challenge submission (2026-10-30).
-All eight commands are implemented and verified against real local `qwen3:8b`
-inference. The `core/` inference, memory, and personality modules are in place;
-`phantom/` provides the argparse CLI, Rich rendering, chat session, command
-handlers, the read-only `phantom/inspection.py` scanner, and the custom ASCII
-identity in `phantom/art.py`. Milestones M0-M7 are complete. The milestone
+The short `phantom` command set is implemented and verified against real local
+`qwen3:8b` inference. The `core/` inference, memory, and personality modules are
+in place; `phantom/` provides the argparse CLI, Rich rendering, chat session,
+command handlers, the read-only `phantom/inspection.py` scanner, and the custom
+ASCII identity in `phantom/art.py`. Milestones M0-M9 are complete. The milestone
 checklists below are kept as the original plan; this status section and the
 verification log are the current truth.
 
-**Implemented:** `awaken` (animated mark, real checks, introduction), `chat`
-(sigil, real streaming, measured token receipt, slash commands), `inspect`
-(read-only scan, evidence report, optional local-model interpretation,
-configurable limits), `remember`, `memories`, `forget`, `status`, `exorcise`
-(closed-eye mark, real shutdown summary, final rule); global options before or
-after the subcommand; plain mode; animation gating for non-TTY, `NO_COLOR`, and
-`TERM=dumb`; JSON status; typed exit codes; 180 passing tests plus 2
-environment-skipped symlink tests.
+**Implemented:** bare `phantom` (animated mark, real checks, introduction;
+same as `phantom awaken`), `phantom chat` (sigil, real streaming, measured token
+receipt, slash commands), `phantom inspect` (read-only scan, evidence report,
+optional local-model interpretation, configurable limits), `phantom remember`,
+`phantom memories` (numbered list), `phantom forget` (list number, ID, or unique
+prefix), `phantom status`, `phantom exorcise` (closed-eye mark, real shutdown
+summary, final rule), and `phantom --help`; a `phantom` console script from
+`pyproject.toml`; global options before or after the subcommand; plain mode;
+animation gating for non-TTY, `NO_COLOR`, and `TERM=dumb`; JSON status; typed
+exit codes; 186 passing tests plus 2 environment-skipped symlink tests.
+
+**Default model:** `qwen3:8b` everywhere (`core/brain.py`, CLI help, tests, and
+docs). It is used directly through the Ollama Python library. PHANTOM never
+pulls a model or starts a service automatically; missing-model output names the
+optional manual command `ollama pull qwen3:8b`.
 
 **Also complete:** MIT `LICENSE` with matching `pyproject.toml` metadata;
 complete README with architecture, model setup, privacy design, open-source
@@ -100,7 +107,7 @@ when optional deps are missing.
 - [x] Add `pyproject.toml` with `requires-python = ">=3.11"`, `ollama>=0.6,<0.7`, `rich>=15,<16`, `httpx>=0.27,<1`, dev `pytest>=9,<10`, console script `phantom = "phantom.main:main"`, and pytest config.
 - [x] Add package skeleton and a complete `README.md`.
 - [x] Keep `main.py` free of Rich/Ollama imports; handlers import lazily.
-- **Acceptance:** `python -m phantom.main --help` exits 0 with no database created; `pip install -e ".[dev]"` succeeds; `python -m pytest --collect-only` collects tests; importing `phantom.main` does not require Ollama.
+- **Acceptance:** `phantom --help` exits 0 with no database created; `pip install -e ".[dev]"` succeeds; `python -m pytest --collect-only` collects tests; importing `phantom.main` does not require Ollama.
 
 ### M1 — CLI shell, config, errors, status, awaken
 
@@ -173,7 +180,7 @@ when optional deps are missing.
 - [x] `--plain` output is line-oriented, ASCII-only, and fully usable.
 - **Acceptance:** non-TTY and `NO_COLOR` output contains no ANSI; `--plain`
   completes every command; a simulated backend failure still prints the error
-  immediately; 180 tests pass on Windows (2 symlink tests skipped by the
+  immediately; 186 tests pass on Windows (2 symlink tests skipped by the
   environment). A manual styled and plain demonstration run is recorded in the
   README plan.
 
@@ -184,7 +191,7 @@ when optional deps are missing.
 - [x] Add `LICENSE` (MIT confirmed by the project owner) and verify `pyproject.toml` metadata (`License-Expression: MIT`).
 - [x] Fresh-venv install test; run every documented command from the repo root; run the full test suite; fix regressions before moving on.
 - [x] Manual live checks: `awaken`, `status`, `chat` with a real stream, `remember`/`memories`/`forget`, `inspect` on a temp project, `exorcise`.
-- **Acceptance:** full pytest suite passes; fresh install works; all eight commands work; README matches behavior; no unsupported claims; no cloud AI calls; `inspect` leaves the target tree byte-identical.
+- **Acceptance:** full pytest suite passes; fresh install works; all documented short commands work; README matches behavior; no unsupported claims; no cloud AI calls; `inspect` leaves the target tree byte-identical.
 
 ### M8 — Demo and challenge submission (after code is done)
 
@@ -200,31 +207,61 @@ when optional deps are missing.
 - **Acceptance:** submission includes working repo, demo, setup instructions,
   privacy explanation, and the required tag.
 
+### M9 — Short `phantom` commands and the installed entry point
+
+- [x] Add `phantom = "phantom.main:main"` as the console script and keep
+  `python -m phantom.main` only as a development fallback.
+- [x] Make a bare `phantom` run the full awakening experience (checks, storage
+  initialization, introduction) with `phantom awaken` as an explicit alias.
+- [x] Support `phantom`, `phantom chat`, `phantom inspect PATH`,
+  `phantom remember "TEXT"`, `phantom memories`, `phantom forget ID`,
+  `phantom status`, `phantom exorcise`, and `phantom --help`.
+- [x] Make `phantom forget 1` select the numbered row shown by
+  `phantom memories`, while still accepting a full ID or unique prefix and still
+  requiring confirmation.
+- [x] Keep `qwen3:8b` as the default in code, help, tests, and docs; show the
+  optional `ollama pull qwen3:8b` line when it is missing and `ollama serve`
+  when Ollama is unreachable.
+- [x] Update `AGENTS.md`, `README.md`, `TASKS.md`, `docs/DEMO.md`,
+  `scripts/demo.py`, CLI help, and tests to use the short commands.
+- [x] Document Windows PowerShell activation and editable installation in the
+  README.
+- **Acceptance:** `python -m pip install -e .` installs `phantom`; the installed
+  script runs every documented short command; the test suite passes; no working
+  behavior is removed.
+
 ## Verification log (2026-10-30)
 
 | Command | Observed result |
 | --- | --- |
-| `python -m pytest -q` | 180 passed, 2 skipped (symlink privilege) |
-| Fresh venv `pip install -e ".[dev]"` | install succeeded, `phantom --version` -> `PHANTOM 0.1.0` |
-| `python -m phantom.main awaken --db ... --plain --no-animation` | exit 0, all checks ok, `qwen3:8b` available |
-| `python -m phantom.main status --json` | exit 0, valid JSON, model available, archive healthy |
-| `python -m phantom.main remember ...` | exit 0, record stored with UUID and `user` origin |
-| `python -m phantom.main memories` in a new process | exit 0, record persisted |
-| `python -m phantom.main forget <prefix> --yes` | exit 0, one record deleted, nothing else touched |
-| `python -m phantom.main chat` with piped input | exit 0, live stream, 25 tokens at 5.2 tok/s |
-| `python -m phantom.main inspect <temp-project> --no-ai` | exit 0, `.env` and `node_modules` skipped, TODO at `app.py:5` |
-| `python -m phantom.main inspect <temp-project>` | exit 0, separated model interpretation, 123.8 s on CPU |
-| `python -m phantom.main exorcise` | exit 0, memory count preserved |
-| `python -m phantom.main inspect <missing path>` | exit 2 |
-| `python -m phantom.main inspect <secret file>` | exit 5 |
-| `python -m phantom.main status --host http://127.0.0.1:9` | exit 3 |
-| `python -m phantom.main status --host http://example.com:11434` | exit 2, non-local host refused |
+| `python -m pytest -q` | 186 passed, 2 skipped (symlink privilege) |
+| `python -m pip install -e .` | install succeeded; `phantom.exe` created |
+| Fresh isolated venv, `python -m pip install -e .` | install succeeded, `phantom --version` -> `PHANTOM 0.1.0`, `phantom status` exit 0 |
+| Separate venv used for the suite | 186 passed, 2 skipped |
+| `phantom --help` | exit 0, all short commands and examples listed |
+| `phantom --db ... --plain --no-animation` (no command) | exit 0, all checks ok, `qwen3:8b` available, introduction shown |
+| `phantom status` | exit 0, `qwen3:8b` installed, archive healthy |
+| `phantom status --json` | exit 0, valid JSON, model available, archive healthy |
+| `phantom remember ...` | exit 0, record stored with UUID and `user` origin |
+| `phantom memories` in a new process | exit 0, numbered record persisted |
+| `phantom forget 1` | exit 0, one confirmed record deleted, nothing else touched |
+| `phantom chat` with piped input | exit 0, live `qwen3:8b` stream, 21 tokens at 5.9 tok/s |
+| `phantom inspect . --no-ai` | exit 0, read-only report, ignored directories skipped |
+| `phantom inspect <temp-project>` | exit 0, separated model interpretation, 123.8 s on CPU |
+| `phantom exorcise` | exit 0, memory count preserved |
+| `phantom inspect <missing path>` | exit 2 |
+| `phantom inspect <secret file>` | exit 5 |
+| `phantom status --host http://127.0.0.1:9` | exit 3, prints `ollama serve` recovery |
+| `phantom status --model qwen-missing:1b` | exit 3, prints `ollama pull qwen-missing:1b` |
+| `phantom status --host http://example.com:11434` | exit 2, non-local host refused |
+| `phantom summon` | exit 2, invalid command |
 | `scripts/demo.py --no-chat` | all steps completed, no real archive or project touched |
 | `scripts/demo.py` | exit 0; full run including a live 41-token chat turn |
 
 ## Cross-cutting acceptance criteria
 
-- All commands run from `D:\phantom` as `python -m phantom.main <command>`.
+- All commands run from `D:\phantom` as `phantom <command>` after
+  `python -m pip install -e .` and virtual environment activation.
 - No command silently succeeds: success is printed only after the operation completed.
 - No automatic model download, no automatic `ollama serve`, no automatic memory deletion.
 - Only localhost Ollama is contacted by default; inspected content never leaves the machine.

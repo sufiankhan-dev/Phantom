@@ -19,7 +19,7 @@ def run(ctx: CommandContext, args: Any) -> int:
     if not records:
         renderer.panel(
             "The archive is empty.\n"
-            'Use: python -m phantom.main remember "TEXT"',
+            'Use: phantom remember "TEXT"',
             title="No memories",
         )
         return 0

@@ -209,6 +209,34 @@ def read_mood(tmp_path: Path):
 # -- parser ------------------------------------------------------------
 
 
+def test_parser_defaults_to_no_command_and_the_cli_awakens(tmp_path):
+    assert build_parser().parse_args([]).command is None
+
+    result = run_cli([], tmp_path)
+    assert result.code == 0
+    assert "TRANSMISSION" in result.out
+    assert "Memories on record" in result.out
+    assert (tmp_path / "phantom.db").exists()
+
+
+def test_bare_phantom_is_the_same_experience_as_awaken(tmp_path):
+    bare = run_cli([], tmp_path)
+    explicit = run_cli(["awaken"], tmp_path)
+    assert bare.code == explicit.code == 0
+    assert "P H A N T O M" in bare.out
+    assert "P H A N T O M" in explicit.out
+    assert "It is awake." in bare.out
+    assert "It is awake." in explicit.out
+
+
+def test_pyproject_declares_the_phantom_console_script():
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    assert data["project"]["scripts"]["phantom"] == "phantom.main:main"
+
+
 def test_parser_accepts_every_command():
     parser = build_parser()
     for command in COMMANDS:
@@ -260,6 +288,10 @@ def test_help_lists_every_command():
     for command in COMMANDS:
         assert command in text
     assert "PHANTOM_ALLOW_REMOTE_OLLAMA" in text
+    assert "phantom inspect ." in text
+    assert "phantom forget 1" in text
+    assert "python -m phantom.main" in text
+    assert "development" in text.lower()
 
 
 def test_external_ollama_host_is_refused(tmp_path):
@@ -419,6 +451,39 @@ def test_forget_yes_skips_the_prompt(tmp_path):
     assert read_memories(tmp_path) == []
 
 
+def test_forget_accepts_the_number_shown_by_memories(tmp_path):
+    older = seed_memory(tmp_path, "Older memory.")
+    newer = seed_memory(tmp_path, "Newer memory.")
+
+    listing = run_cli(["memories"], tmp_path)
+    assert listing.code == 0
+    assert "1" in listing.out
+
+    result = run_cli(["forget", "1"], tmp_path, input_lines=["y"])
+    assert result.code == 0
+    assert "Memory released" in result.out
+    assert [record.id for record in read_memories(tmp_path)] == [older.id]
+    assert newer.id not in [record.id for record in read_memories(tmp_path)]
+
+
+def test_forget_number_out_of_range_deletes_nothing(tmp_path):
+    seed_memory(tmp_path, "Only memory.")
+
+    result = run_cli(["forget", "9"], tmp_path)
+    assert result.code == 2
+    assert "no memory at position 9" in result.err.lower()
+    assert len(read_memories(tmp_path)) == 1
+
+
+def test_forget_number_zero_is_refused(tmp_path):
+    seed_memory(tmp_path, "Only memory.")
+
+    result = run_cli(["forget", "0"], tmp_path)
+    assert result.code == 2
+    assert "start at 1" in result.err
+    assert len(read_memories(tmp_path)) == 1
+
+
 def test_forget_unknown_id_is_a_usage_error(tmp_path):
     result = run_cli(["forget", "deadbeef"], tmp_path)
     assert result.code == 2
@@ -482,6 +547,7 @@ def test_status_with_unreachable_ollama(tmp_path):
     assert result.code == 3
     assert "unreachable" in result.out
     assert "Cannot reach Ollama." in result.out
+    assert "ollama serve" in result.out
 
 
 def test_status_with_missing_model(tmp_path):
@@ -489,6 +555,7 @@ def test_status_with_missing_model(tmp_path):
     result = run_cli(["status"], tmp_path, brain=brain)
     assert result.code == 3
     assert "not installed" in result.out
+    assert "ollama pull qwen3:8b" in result.out
 
 
 def test_status_with_corrupt_database(tmp_path):

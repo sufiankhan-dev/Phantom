@@ -84,16 +84,16 @@ plain shell:
 - **Identity.** A custom ASCII ghost marks the application. A wide, styled
   terminal gets the full nine-line mark; plain mode, narrow terminals, and
   redirected output get a compact three-line sigil so nothing wraps into noise.
-- **Awakening.** `awaken` reveals the mark line by line, checks Python, the
+- **Awakening.** `phantom` (or `phantom awaken`) reveals the mark line by line, checks Python, the
   Ollama package, the archive, and the local model, then prints the
   introduction and a line that reflects the real model state. The reveal is
   under a third of a second and can be skipped with `--no-animation`.
-- **Conversation.** `chat` opens with the compact mark and a session panel.
+- **Conversation.** `phantom chat` opens with the compact mark and a session panel.
   Responses stream directly from the model; there is no artificial typing delay
   and no fabricated activity. When Ollama reports `eval_count` and
   `eval_duration`, a dim `[i]` receipt shows the measured token count and tokens
   per second.
-- **Shutdown.** `exorcise` prints the closed-eye mark, two fading lines, a real
+- **Shutdown.** `phantom exorcise` prints the closed-eye mark, two fading lines, a real
   shutdown summary, and the final rule `the cursor goes dark`. It never deletes
   anything.
 - **Progress and errors.** Spinners wrap only operations that are actually
@@ -118,8 +118,8 @@ core/                     local engine
   personality.py          system prompt and deterministic mood model
 
 phantom/                  command line presentation
-  main.py                 entry point for python -m phantom.main
-  cli.py                  argparse tree, dispatch, exit codes
+  main.py                 console script entry point; python -m phantom.main fallback
+  cli.py                  argparse tree, default command, dispatch, exit codes
   config.py               CLI > environment > defaults
   art.py                  custom ASCII marks and the compact sigil
   render.py               Rich theme, panels, tables, streaming, plain mode
@@ -153,26 +153,57 @@ but it was not re-tested on Python 3.11–3.13 or on a POSIX system here.
 
 ## Installation
 
-```bash
+PHANTOM installs a short `phantom` command. You do not need to type
+`python -m phantom.main` for normal use.
+
+### Windows PowerShell
+
+```powershell
 git clone https://github.com/sufiankhan-dev/Phantom.git
 cd Phantom
 python -m venv .venv
-# Windows: .venv\Scripts\activate
-# POSIX:   source .venv/bin/activate
-pip install -e ".[dev]"
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+phantom --help
 ```
 
+If PowerShell refuses to run the activation script, allow it for the current
+session only:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+With Command Prompt, activate with `.venv\Scripts\activate.bat` instead.
+
+### POSIX shells
+
+```bash
+git clone https://github.com/sufiankhan-dev/Phantom.git
+cd Phantom
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+phantom --help
+```
+
+`pip install -e ".[dev]"` adds pytest for running the test suite.
+
 The editable install was verified in a fresh virtual environment on
-2026-10-30. You can also run it without installing, from the repository root:
+2026-10-30. The entry point is declared in `pyproject.toml`:
+
+```toml
+[project.scripts]
+phantom = "phantom.main:main"
+```
+
+If the console script is not on `PATH`, activate the virtual environment or run
+the development fallback from the repository root:
 
 ```bash
 python -m phantom.main --help
-```
-
-After `pip install -e .`, the `phantom` console script is also available:
-
-```bash
-phantom --help
 ```
 
 ## Ollama setup and model configuration
@@ -182,6 +213,26 @@ ollama serve          # only if it is not already running
 ollama pull qwen3:8b
 ollama list           # confirm the model is present
 ```
+
+`qwen3:8b` is the default model everywhere: `core/brain.py`, the CLI, the
+tests, and this README. PHANTOM talks to it directly through the Ollama Python
+library (`ollama.Client`). It never downloads a model, never runs
+`ollama pull` for you, and never calls a cloud AI API.
+
+If Ollama is not running, PHANTOM explains how to start it:
+
+```bash
+ollama serve
+```
+
+If `qwen3:8b` is missing, PHANTOM prints the exact optional manual command and
+stops:
+
+```bash
+ollama pull qwen3:8b
+```
+
+`phantom status` shows the same recovery line. No model is installed automatically.
 
 At the time of verification the test machine had Ollama **0.40.4**, with
 `qwen3:8b` and `gemma3:4b` installed. Live inference for this submission used
@@ -208,29 +259,46 @@ its own, and it never silently swaps in a different model.
 
 ## Commands
 
-All commands run from the repository root. Global options such as `--model`,
-`--host`, `--db`, `--timeout`, `--plain`, `--no-animation`, and `--debug` work
-before or after the subcommand.
+Run these from the repository root after activating the virtual environment.
+Global options such as `--model`, `--host`, `--db`, `--timeout`, `--plain`,
+`--no-animation`, and `--debug` work before or after the subcommand.
 
-### `awaken`
+| Command | Purpose |
+| --- | --- |
+| `phantom` | Awaken: checks, storage initialization, and the introduction |
+| `phantom chat` | Interactive, streamed conversation |
+| `phantom inspect PATH` | Read-only inspection of a file or directory |
+| `phantom remember "TEXT"` | Save one explicit memory |
+| `phantom memories` | List memories with numbers, IDs, and timestamps |
+| `phantom forget ID` | Delete one memory after confirmation |
+| `phantom status` | Model, Ollama, database, and memory count |
+| `phantom exorcise` | Atmospheric shutdown that deletes nothing |
+| `phantom --help` | Full help, examples, model, and environment |
+
+### `phantom` / `phantom awaken`
 
 ```bash
-python -m phantom.main awaken
-python -m phantom.main awaken --strict
+phantom
+phantom awaken
+phantom awaken --strict
 ```
 
 Displays the startup sequence, checks Python, the Ollama package, the memory
-archive, and the local model, initializes storage, and introduces PHANTOM. The
-ASCII mark reveals briefly when animation is safe; the real check results are
-shown as they complete. A missing model is a warning and the command still
-initializes storage and introduces the entity; `--strict` makes that condition
-exit `3` after the check table.
+archive, and the local model, initializes storage, and introduces PHANTOM. A
+bare `phantom` is the default experience and behaves exactly like
+`phantom awaken`. The ASCII mark reveals briefly when animation is safe; the
+real check results are shown as they complete. A missing model is a warning and
+the command still initializes storage and introduces the entity; `--strict`
+makes that condition exit `3` after the check table.
 
-### `chat`
+If `qwen3:8b` is missing, the warning includes the optional manual command
+`ollama pull qwen3:8b`. PHANTOM does not run it.
+
+### `phantom chat`
 
 ```bash
-python -m phantom.main chat
-python -m phantom.main chat --model gemma3:4b
+phantom chat
+phantom chat --model NAME
 ```
 
 Starts an interactive session. Responses stream from the local model as they
@@ -253,13 +321,13 @@ kept only in memory for this session. Slash commands:
 `Ctrl+C` at the prompt, `Ctrl+Z` followed by Enter on Windows, or end-of-input
 closes the session cleanly.
 
-### `inspect PATH`
+### `phantom inspect PATH`
 
 ```bash
-python -m phantom.main inspect .
-python -m phantom.main inspect src --no-ai
-python -m phantom.main inspect . --max-files 50
-python -m phantom.main inspect . --max-file-bytes 131072 --max-total-bytes 2097152
+phantom inspect .
+phantom inspect src --no-ai
+phantom inspect . --max-files 50
+phantom inspect . --max-file-bytes 131072 --max-total-bytes 2097152
 ```
 
 Scans a file or directory in read-only mode. The scanner reports only what it
@@ -309,53 +377,59 @@ produces a warning, never a failed inspection.
 Exit codes: `0` report produced, `2` invalid path, `5` refused secret, binary,
 or otherwise unreadable target.
 
-### `remember "TEXT"`
+### `phantom remember "TEXT"`
 
 ```bash
-python -m phantom.main remember "I prefer pytest and short answers."
+phantom remember "My project is PHANTOM"
+phantom remember "I prefer pytest and short answers."
 ```
 
 Stores the supplied text, with leading and trailing whitespace trimmed, using a
 UUID and UTC timestamp. The archive labels it as `user` origin. Empty text and
 text over 4,000 characters are rejected.
 
-### `memories`
+### `phantom memories`
 
 ```bash
-python -m phantom.main memories
-python -m phantom.main memories --limit 10
+phantom memories
+phantom memories --limit 10
 ```
 
-Lists short IDs, local timestamps, origin, and content, newest first.
+Lists a `#` number, short ID, local timestamp, origin, and content, newest
+first. `phantom forget 1` refers to the first row.
 
-### `forget ID`
+### `phantom forget ID`
 
 ```bash
-python -m phantom.main forget 1a2b3c4d
-python -m phantom.main forget 1a2b3c4d --yes
+phantom forget 1
+phantom forget 1a2b3c4d
+phantom forget 1a2b3c4d --yes
 ```
 
 Shows the selected memory, asks for confirmation, and deletes only that record.
-A full UUID or a unique prefix of at least four characters is accepted.
-Ambiguous prefixes are refused. `--yes` skips the prompt; without it, a
-non-interactive invocation fails and deletes nothing.
+`ID` may be the list number from `phantom memories` (1 is the newest), a full
+UUID, or a unique prefix of at least four characters. Ambiguous prefixes are
+refused. `--yes` skips the prompt; without it, a non-interactive invocation
+fails and deletes nothing.
 
-### `status`
+### `phantom status`
 
 ```bash
-python -m phantom.main status
-python -m phantom.main status --json
+phantom status
+phantom status --json
 ```
 
 Reports configuration, Ollama reachability, installed model presence, database
 integrity and schema version, memory count, interpretation count, and mood.
-`--json` emits the same facts for scripts. Exit codes: `0` healthy, `3` model
-unavailable, `4` archive problem.
+When the model is missing, the table includes the optional manual install line
+`ollama pull qwen3:8b`. When Ollama is unreachable, it includes the `ollama
+serve` recovery step. `--json` emits the same facts for scripts. Exit codes:
+`0` healthy, `3` model unavailable, `4` archive problem.
 
-### `exorcise`
+### `phantom exorcise`
 
 ```bash
-python -m phantom.main exorcise
+phantom exorcise
 ```
 
 Prints the closed-eye ASCII mark, two fading lines, a real shutdown summary,
@@ -417,13 +491,13 @@ printed only when the model actually reports them.
 Current result on Windows with Python 3.14.3:
 
 ```text
-180 passed, 2 skipped
+186 passed, 2 skipped
 ```
 
 The two skipped tests require symlink creation, which the test environment does
 not permit without an extra Windows privilege. A separate root-containment test
-still runs. The same suite was re-run inside a fresh virtual environment after
-`pip install -e ".[dev]"` and produced the same result.
+still runs. The suite was also re-run with a separate virtual environment's
+Python after `python -m pip install -e .` and produced the same result.
 
 Live checks were also performed outside the suite with real `qwen3:8b`
 inference; they are summarized below.
@@ -434,21 +508,25 @@ Verified on 2026-10-30 in this repository:
 
 | Check | Result |
 | --- | --- |
-| `python -m pytest -q` | 180 passed, 2 skipped |
-| Fresh venv, `pip install -e ".[dev]"` | succeeded; `phantom --version` printed `PHANTOM 0.1.0` |
+| `python -m pytest -q` | 186 passed, 2 skipped |
+| `python -m pip install -e .` | succeeded; `phantom` console script installed |
+| Fresh isolated venv, `python -m pip install -e .` | succeeded; `phantom --version` printed `PHANTOM 0.1.0`; `phantom status` exit 0 |
 | Installed metadata | `License-Expression: MIT` |
-| `awaken --plain --no-animation` | exit 0; all checks `[ok]` with `qwen3:8b` |
-| `status --json` | exit 0; model available, database healthy, valid JSON |
-| `remember`, `memories`, `forget --yes` | exit 0; records persisted across separate processes |
-| `chat` with piped input | exit 0; live stream, 25 tokens at 5.2 tok/s |
-| `inspect --no-ai` | exit 0; `.env` and `node_modules` skipped, TODO located at `app.py:5` |
-| `inspect` with live model | exit 0; separate interpretation panel, 123.8 s wall time |
-| `exorcise` | exit 0; archive unchanged, memory count preserved |
-| `scripts/demo.py` (full) | exit 0; live chat turn 41 tokens at 4.1 tok/s |
-| Invalid path | exit 2 |
-| Secret file target | exit 5 |
-| Unreachable Ollama host | exit 3 |
+| `phantom --help` | exit 0; every short command and example listed |
+| `phantom` (no arguments) | exit 0; checks, storage, introduction, `qwen3:8b` |
+| `phantom status` | exit 0; `qwen3:8b` installed, archive healthy |
+| `phantom status --json` | exit 0; model available, database healthy, valid JSON |
+| `phantom remember`, `phantom memories` | exit 0; number, UUID, timestamp, and content shown |
+| `phantom forget 1` | exit 0; one record deleted after confirmation |
+| `phantom chat` with piped input | exit 0; live `qwen3:8b` stream, 21 tokens at 5.9 tok/s |
+| `phantom inspect . --no-ai` | exit 0; read-only report, ignored directories skipped |
+| `phantom exorcise` | exit 0; archive unchanged, memory count preserved |
+| `phantom status --model qwen-missing:1b` | exit 3; prints `ollama pull qwen-missing:1b` |
+| `phantom status --host http://127.0.0.1:9` | exit 3; prints the `ollama serve` recovery step |
+| `phantom inspect <missing path>` | exit 2 |
+| Unknown command | exit 2 |
 | Non-loopback host without opt-in | exit 2 |
+| `scripts/demo.py` (full) | exit 0; live chat turn 41 tokens at 4.1 tok/s |
 
 These are observations from one machine, not general performance claims.
 
@@ -467,8 +545,8 @@ These are observations from one machine, not general performance claims.
 - `qwen3:8b` may run entirely on CPU and can be slow on laptops without a GPU.
   The live inspection above took about two minutes. Use `--model` with a
   smaller installed model for faster demonstrations.
-- Conversation history is intentionally not persisted, so restarting `chat`
-  starts a fresh transcript. Memories persist.
+- Conversation history is intentionally not persisted, so restarting
+  `phantom chat` starts a fresh transcript. Memories persist.
 - The schema has no migration path yet. A database from a newer version is
   refused rather than modified.
 - Remote Ollama is supported only as an explicit opt-in and is not the intended
@@ -481,25 +559,23 @@ These are observations from one machine, not general performance claims.
 
 The full recording script is in [`docs/DEMO.md`](docs/DEMO.md). A short version:
 
-1. `python -m phantom.main awaken --db .phantom-demo.db` - show the mark, real
-   dependency checks, and the introduction.
-2. `python -m phantom.main remember "I prefer pytest and short, evidence-based answers." --db .phantom-demo.db`
-3. `python -m phantom.main chat --db .phantom-demo.db` - ask a question that the
-   stored preference helps with, show the real stream and measured receipt,
-   then `/exit`.
-4. `python -m phantom.main memories --db .phantom-demo.db` - run in a new
-   process and show that the memory survived.
-5. `python -m phantom.main inspect . --db .phantom-demo.db --no-ai` - show
-   confirmed findings and TODO locations. Omit `--no-ai` for the labelled model
-   interpretation.
-6. `python -m phantom.main status --db .phantom-demo.db` - show model, archive,
-   schema, count, and mood.
-7. `python -m phantom.main exorcise --db .phantom-demo.db` - show the shutdown
-   summary and that nothing was deleted.
-8. `python -m phantom.main memories --db .phantom-demo.db` - prove persistence
-   again.
-9. `python -m phantom.main awaken --plain --no-animation --db .phantom-demo.db`
-   - show the plain fallback.
+1. `phantom --db .phantom-demo.db` - show the mark, real dependency checks, and
+   the introduction.
+2. `phantom remember "I prefer pytest and short, evidence-based answers." --db .phantom-demo.db`
+3. `phantom chat --db .phantom-demo.db` - ask a question that the stored
+   preference helps with, show the real stream and measured receipt, then
+   `/exit`.
+4. `phantom memories --db .phantom-demo.db` - run in a new process and show that
+   the memory survived.
+5. `phantom inspect . --db .phantom-demo.db --no-ai` - show confirmed findings
+   and TODO locations. Omit `--no-ai` for the labelled model interpretation.
+6. `phantom status --db .phantom-demo.db` - show model, archive, schema, count,
+   and mood.
+7. `phantom exorcise --db .phantom-demo.db` - show the shutdown summary and that
+   nothing was deleted.
+8. `phantom memories --db .phantom-demo.db` - prove persistence again.
+9. `phantom --plain --no-animation --db .phantom-demo.db` - show the plain
+   fallback.
 
 An automated version that uses a temporary archive and a generated sample
 project is included:

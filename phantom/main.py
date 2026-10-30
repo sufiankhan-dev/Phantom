@@ -1,4 +1,13 @@
-"""Entry point for ``python -m phantom.main``."""
+"""Entry point for the ``phantom`` console script and ``python -m phantom.main``.
+
+The installed console script is the normal interface::
+
+    phantom
+    phantom chat
+    phantom status
+
+``python -m phantom.main`` remains available as a development fallback.
+"""
 
 from __future__ import annotations
 

@@ -12,15 +12,15 @@ Run all commands from the repository root.
 
 1. Install the project and start Ollama once:
 
-   ```bash
+   ```powershell
    python -m venv .venv
-   # Windows: .venv\Scripts\activate
-   # POSIX:   source .venv/bin/activate
-   pip install -e ".[dev]"
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install -e ".[dev]"
    ollama serve
    ollama pull qwen3:8b
    ```
 
+   On POSIX, activate with `source .venv/bin/activate` instead.
    The first install and model pull need internet access. After that, inference
    and memory are local.
 
@@ -28,7 +28,7 @@ Run all commands from the repository root.
 
    ```bash
    ollama list
-   python -m phantom.main status --db .phantom-demo.db
+   phantom status --db .phantom-demo.db
    ```
 
 3. Remove any previous demo archive so the recording starts clean:
@@ -49,18 +49,19 @@ Run all commands from the repository root.
 
 Each block is one separate process, which is what proves persistence.
 
-**1. Awakening.** Show the mark, the real checks, and the introduction.
+**1. Awakening.** Show the mark, the real checks, and the introduction. A bare
+`phantom` is the default experience.
 
 ```bash
-python -m phantom.main awaken --db .phantom-demo.db
+phantom --db .phantom-demo.db
 ```
 
 **2. A useful interaction with a stored preference.** The memory is user
 supplied and will be retrieved for a relevant question.
 
 ```bash
-python -m phantom.main remember "I prefer pytest and short, evidence-based answers." --db .phantom-demo.db
-python -m phantom.main chat --db .phantom-demo.db
+phantom remember "I prefer pytest and short, evidence-based answers." --db .phantom-demo.db
+phantom chat --db .phantom-demo.db
 ```
 
 Inside the session, ask something the memory actually helps with:
@@ -76,7 +77,7 @@ metric is absent, PHANTOM does not invent one.
 **3. Persistence in a new session.** Run this after the chat process has ended.
 
 ```bash
-python -m phantom.main memories --db .phantom-demo.db
+phantom memories --db .phantom-demo.db
 ```
 
 The memory ID, local timestamp, `user` origin, and text are still present.
@@ -85,7 +86,7 @@ The memory ID, local timestamp, `user` origin, and text are still present.
 needs no generated fixture.
 
 ```bash
-python -m phantom.main inspect . --db .phantom-demo.db --no-ai
+phantom inspect . --db .phantom-demo.db --no-ai
 ```
 
 Show the confirmed file count, the root `pyproject.toml` metadata, likely entry
@@ -98,26 +99,26 @@ run the same command without `--no-ai`; it is placed in a separate
 mood.
 
 ```bash
-python -m phantom.main status --db .phantom-demo.db
+phantom status --db .phantom-demo.db
 ```
 
 **6. Shutdown.** Show the closed-eye mark and the real summary.
 
 ```bash
-python -m phantom.main exorcise --db .phantom-demo.db
+phantom exorcise --db .phantom-demo.db
 ```
 
 **7. Proof that shutdown deleted nothing.**
 
 ```bash
-python -m phantom.main memories --db .phantom-demo.db
+phantom memories --db .phantom-demo.db
 ```
 
 **8. Plain fallback.** Show that the same facts work without colour or
 animation.
 
 ```bash
-python -m phantom.main awaken --plain --no-animation --db .phantom-demo.db
+phantom awaken --plain --no-animation --db .phantom-demo.db
 ```
 
 ## Automated version

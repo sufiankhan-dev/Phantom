@@ -52,14 +52,24 @@ _COMMAND_MODULES = {
 
 _EPILOG = """\
 examples:
-  python -m phantom.main awaken
-  python -m phantom.main chat
-  python -m phantom.main inspect PATH
-  python -m phantom.main remember "I prefer pytest and short answers."
-  python -m phantom.main memories
-  python -m phantom.main forget 1a2b3c4d
-  python -m phantom.main status
-  python -m phantom.main exorcise
+  phantom
+  phantom chat
+  phantom inspect .
+  phantom remember "I prefer pytest and short answers."
+  phantom memories
+  phantom forget 1
+  phantom status
+  phantom exorcise
+  phantom --help
+
+Running `phantom` with no command awakens the entity: it checks local
+dependencies, initializes the archive, and introduces PHANTOM.
+
+model:
+  The default model is qwen3:8b, used directly through the Ollama Python
+  library. Override it with --model NAME or PHANTOM_MODEL.
+  If it is missing, PHANTOM prints `ollama pull qwen3:8b` and stops.
+  It never downloads a model or starts a service on its own.
 
 environment:
   PHANTOM_MODEL                 model name (default: qwen3:8b)
@@ -75,6 +85,9 @@ display:
   --no-animation                keep styling, skip the short reveals
   NO_COLOR, TERM=dumb           disable colour and animation
   redirected stdout             ASCII borders, no animation, real results
+
+development:
+  python -m phantom.main ...    fallback when the console script is not installed
 
 exit codes:
   0 success   2 invalid input   3 local model unavailable
@@ -167,7 +180,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="phantom",
         description=(
             "PHANTOM - an offline first presence in your terminal. "
-            "Local inference through Ollama, local memory in SQLite, no cloud."
+            "Local inference through Ollama, local memory in SQLite, no cloud. "
+            "Run `phantom` with no command to awaken it."
         ),
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -181,8 +195,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(
         dest="command",
-        metavar="COMMAND",
-        required=True,
+        metavar="[COMMAND]",
+        required=False,
         title="commands",
     )
 
@@ -192,11 +206,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Check dependencies, open the archive, and introduce PHANTOM.",
         description=(
             "Display the startup sequence, verify Python and Ollama, initialize "
-            "the memory archive, and introduce the entity. A missing model is a "
-            "warning unless --strict is given."
+            "the memory archive, and introduce the entity. This is also what a "
+            "bare `phantom` command does. A missing model is a warning unless "
+            "--strict is given."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="example:\n  python -m phantom.main awaken\n  python -m phantom.main awaken --strict",
+        epilog="examples:\n  phantom\n  phantom awaken --strict",
     )
     awaken.add_argument(
         "--strict",
@@ -214,11 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
             "commands manage memories and mood. /help lists them."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "examples:\n"
-            "  python -m phantom.main chat\n"
-            "  python -m phantom.main chat --model gemma3:4b"
-        ),
+        epilog="example:\n  phantom chat",
     )
 
     inspect = subparsers.add_parser(
@@ -236,9 +247,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  python -m phantom.main inspect .\n"
-            "  python -m phantom.main inspect src --no-ai\n"
-            "  python -m phantom.main inspect . --max-files 50\n\n"
+            "  phantom inspect .\n"
+            "  phantom inspect src --no-ai\n"
+            "  phantom inspect . --max-files 50\n\n"
             "limits:\n"
             f"  per file: {DEFAULT_MAX_FILE_BYTES} bytes\n"
             f"  total:    {DEFAULT_MAX_TOTAL_BYTES} bytes\n"
@@ -290,7 +301,7 @@ def build_parser() -> argparse.ArgumentParser:
             "memory is labelled as user supplied and never sent anywhere."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='example:\n  python -m phantom.main remember "I prefer pytest."',
+        epilog='example:\n  phantom remember "I prefer pytest."',
     )
     remember.add_argument("text", metavar="TEXT", help="Exact memory text to store.")
 
@@ -300,7 +311,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="List archived memories with IDs and timestamps.",
         description="List stored memories, newest first, with short IDs and local timestamps.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="example:\n  python -m phantom.main memories --limit 10",
+        epilog="example:\n  phantom memories --limit 10",
     )
     memories.add_argument(
         "--limit",
@@ -317,20 +328,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delete one memory after confirmation.",
         description=(
             "Show the selected memory and delete only that record after an "
-            "explicit confirmation. A unique ID prefix is accepted. Use --yes "
-            "to skip the prompt in a non-interactive context."
+            "explicit confirmation. Pass the number shown by `phantom memories` "
+            "(1 is the newest) or a full ID / unique prefix of at least 4 hex "
+            "characters. Use --yes to skip the prompt in a non-interactive "
+            "context."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  python -m phantom.main forget 1a2b3c4d\n"
-            "  python -m phantom.main forget 1a2b3c4d --yes"
+            "  phantom forget 1\n"
+            "  phantom forget 1a2b3c4d\n"
+            "  phantom forget 1a2b3c4d --yes"
         ),
     )
     forget.add_argument(
         "memory_id",
         metavar="ID",
-        help="Full memory ID or a unique prefix of at least 4 hex characters.",
+        help="List number (1 = newest), full memory ID, or a unique prefix.",
     )
     forget.add_argument(
         "--yes",
@@ -350,8 +364,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  python -m phantom.main status\n"
-            "  python -m phantom.main status --json"
+            "  phantom status\n"
+            "  phantom status --json"
         ),
     )
     status.add_argument(
@@ -369,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
             "command never deletes files or memories."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="example:\n  python -m phantom.main exorcise",
+        epilog="example:\n  phantom exorcise",
     )
 
     return parser
@@ -423,6 +437,9 @@ def main(
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "command", None) is None:
+        # A bare `phantom` (or only global options) is the default experience.
+        args.command = "awaken"
 
     # Rich is imported after parsing so --help works even if the renderer
     # dependency is missing.

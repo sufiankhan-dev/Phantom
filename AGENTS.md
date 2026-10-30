@@ -42,41 +42,53 @@ Do not automatically download models or start background services without user c
 
 ## Required Commands
 
-Implement the following commands and ensure they work from the repository root.
+Implement the following short commands through the installed `phantom` console script and ensure they work from the repository root.
 
-`python -m phantom.main awaken`
+`phantom`
 
-Display the PHANTOM startup sequence, check local dependencies, initialize storage, and introduce the entity.
+Launch the default PHANTOM experience: display the startup sequence, check local dependencies, initialize storage, and introduce the entity. This is the same behavior as `phantom awaken`.
 
-`python -m phantom.main chat`
+`phantom chat`
 
 Start an interactive conversation. Stream model responses where supported, maintain conversation history, and handle exit commands cleanly.
 
-`python -m phantom.main inspect PATH`
+`phantom inspect PATH`
 
 Inspect a user specified file or directory. Generate a grounded summary, identify TODO comments, and provide evidence based observations and practical suggestions.
 
-`python -m phantom.main remember "TEXT"`
+`phantom remember "TEXT"`
 
 Save an explicit user provided memory.
 
-`python -m phantom.main memories`
+`phantom memories`
 
-List stored memories with timestamps and stable identifiers.
+List stored memories with timestamps and stable identifiers. Show a list number so `phantom forget 1` is unambiguous.
 
-`python -m phantom.main forget ID`
+`phantom forget ID`
 
-Delete a specific memory only after the user explicitly identifies it.
+Delete a specific memory only after the user explicitly identifies it. Accept a list number, a full ID, or a unique prefix, and confirm before deleting.
 
-`python -m phantom.main status`
+`phantom status`
 
 Show model configuration, Ollama connectivity, database health, and memory count.
 
-`python -m phantom.main exorcise`
+`phantom exorcise`
 
 End the interactive session with an atmospheric shutdown sequence. This command must never delete files or memories.
 
+`phantom --help`
+
+Display all commands, examples, the default model, and environment options.
+
+`phantom awaken` may remain as an explicit alias for the bare `phantom` command. `python -m phantom.main` may remain only as a documented development fallback when the console script is not installed.
+
 Provide useful help output, input validation, and clear error messages for every command.
+
+Configure the console script in `pyproject.toml` as:
+
+`phantom = "phantom.main:main"`
+
+Ensure `main.py` exposes a working `main()` function, and document editable installation with `python -m pip install -e .`.
 
 ## AI Personality
 
