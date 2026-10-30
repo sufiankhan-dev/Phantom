@@ -1,12 +1,34 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "phantom"
 version = "0.1.0"
 description = "PHANTOM: an offline first local AI presence for the terminal"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "sufiankhan-dev" }]
+keywords = [
+    "ai",
+    "cli",
+    "local-first",
+    "ollama",
+    "privacy",
+    "terminal",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development",
+    "Topic :: Terminals",
+]
 dependencies = [
     "ollama>=0.6,<0.7",
     "httpx>=0.27,<1",
@@ -17,6 +39,10 @@ dependencies = [
 dev = [
     "pytest>=9,<10",
 ]
+
+[project.urls]
+Repository = "https://github.com/sufiankhan-dev/Phantom"
+Issues = "https://github.com/sufiankhan-dev/Phantom/issues"
 
 [project.scripts]
 phantom = "phantom.main:main"

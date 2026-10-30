@@ -384,18 +384,25 @@ def _load_handler(command: str) -> Callable[[CommandContext, Any], int]:
 
 
 def _translate(exc: Exception) -> CliError | None:
+    """Map a library failure onto one printable CLI error.
+
+    Brain and memory errors fold their hint into ``str()``. Passing the full
+    string as the message and the hint again would print the advice twice, so
+    the plain ``message`` attribute is used where it exists.
+    """
+
     if isinstance(exc, CliError):
         return exc
     if isinstance(exc, ExternalServiceError):
-        return UsageError(str(exc), hint=exc.hint)
+        return UsageError(exc.message, hint=exc.hint)
     if isinstance(exc, BrainConfigError):
-        return UsageError(str(exc), hint=exc.hint)
+        return UsageError(exc.message, hint=exc.hint)
     if isinstance(exc, BrainError):
-        return DependencyError(str(exc), hint=exc.hint)
+        return DependencyError(exc.message, hint=exc.hint)
     if isinstance(exc, (InvalidMemoryError, MemoryNotFoundError, AmbiguousMemoryError)):
-        return UsageError(str(exc), hint=exc.hint)
+        return UsageError(exc.message, hint=exc.hint)
     if isinstance(exc, PhantomMemoryError):
-        return DatabaseError(str(exc), hint=exc.hint)
+        return DatabaseError(exc.message, hint=exc.hint)
     return None
 
 

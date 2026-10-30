@@ -1,11 +1,13 @@
 # PHANTOM — Implementation Tasks
 
-**Status:** CLI, inspection, and terminal presentation implemented (2026-10-29).
-The `core/` inference, memory, and personality modules are in place, and
-`phantom/` provides the argparse CLI, Rich rendering, chat session, all eight
-command handlers, the read-only `phantom/inspection.py` scanner, and the custom
-ASCII identity in `phantom/art.py`. Milestones M0-M6 are complete. The milestone
-checklists below are the original plan; this status section is the current truth.
+**Status:** Ready for demo recording and challenge submission (2026-10-30).
+All eight commands are implemented and verified against real local `qwen3:8b`
+inference. The `core/` inference, memory, and personality modules are in place;
+`phantom/` provides the argparse CLI, Rich rendering, chat session, command
+handlers, the read-only `phantom/inspection.py` scanner, and the custom ASCII
+identity in `phantom/art.py`. Milestones M0-M7 are complete. The milestone
+checklists below are kept as the original plan; this status section and the
+verification log are the current truth.
 
 **Implemented:** `awaken` (animated mark, real checks, introduction), `chat`
 (sigil, real streaming, measured token receipt, slash commands), `inspect`
@@ -16,98 +18,130 @@ after the subcommand; plain mode; animation gating for non-TTY, `NO_COLOR`, and
 `TERM=dumb`; JSON status; typed exit codes; 180 passing tests plus 2
 environment-skipped symlink tests.
 
-**Still open:** README demo recording, license, git remote, live model smoke
-record for every command.
+**Also complete:** MIT `LICENSE` with matching `pyproject.toml` metadata;
+complete README with architecture, model setup, privacy design, open-source
+rationale, verified limitations, and a demonstration plan;
+`docs/DEMO.md` recording guide; `scripts/demo.py` automated end-to-end demo;
+fresh-venv install verification; live smoke tests for every command; duplicated
+error-hint output fixed in `phantom/cli.py`.
+
+**Still open (submission work, not code):**
+
+1. Record the demo using `docs/DEMO.md`.
+2. Confirm the GitHub repository is public and licensed (remote is
+   `https://github.com/sufiankhan-dev/Phantom.git`).
+3. Draft the DEV submission with `#hf26challenge`, explain local inference and
+   open innovation, and disclose AI assistance.
+4. Submit before **2026-10-31 06:59 UTC** (11:59 PM PDT on Oct 31).
+5. Optional: run the suite on Python 3.11-3.13 and POSIX in CI.
 
 **Baseline:** `D:\phantom` originally contained only `Agents.md` (9,331 bytes).
 No git repository existed at planning time.
 
-## Observed environment
+## Verified environment (2026-10-30)
 
-- Python **3.14.3** (`C:\Users\DELL\AppData\Local\Python\pythoncore-3.14-64\python.exe`), pip 26.0.1, SQLite 3.50.4.
+- Python **3.14.3** on Windows, pip 26.0.1, SQLite 3.50.4.
 - Ollama CLI **0.40.4**; API at `http://127.0.0.1:11434` returned HTTP 200.
-- Installed models: `qwen3:8b` (8.2B, Q4_K_M, 40,960 context, tools/thinking) and `gemma3:4b` (3.9B, vision, 131,072 context).
-- `qwen3:8b` loaded at **100% CPU**, 5.9 GB, 4,096-token context; a 24-token streaming chat completed in **5.49 s**. No GPU acceleration observed (Intel Iris Xe).
-- `rich`, `ollama`, and `pytest` are **not installed**. `click`, `httpx`, and `pydantic` are installed but `click` must not be used (AGENTS mandates `argparse`).
-- `pip install --dry-run ollama==0.6.3 rich==15.0.0 pytest==9.2.0` resolved without version conflicts. Nothing was installed.
-- **Not verified:** the Python `ollama` package (not installed), pytest (not installed, no tests), and any PHANTOM command (no code exists).
+- Installed models: `qwen3:8b` (8.2B, Q4_K_M, 40,960 context, tools/thinking)
+  and `gemma3:4b` (3.9B, vision, 131,072 context).
+- Runtime dependencies installed: `ollama 0.6.3`, `httpx 0.28.1`,
+  `rich 15.0.0`; dev dependency `pytest 9.2.0`.
+- `qwen3:8b` loaded at **100% CPU**, 5.9 GB, 4,096-token context in the
+  planning observation.
+- Live chat (manual turn): 25 tokens at **5.2 tok/s**, 27.8 s wall time.
+- Live inspection with `qwen3:8b`: **123.8 s** wall time, printed a separated
+  model-generated interpretation and exited 0.
+- Fresh venv: `pip install -e ".[dev]"` succeeded; `phantom --version` printed
+  `PHANTOM 0.1.0`; `License-Expression: MIT`.
+- No GPU acceleration observed (Intel Iris Xe).
 
-## Target module layout
+## Actual module layout
 
 ```
+core/
+  brain.py         # the only Ollama boundary: config, streaming, errors
+  memory.py        # versioned SQLite schema, memories, mood persistence
+  personality.py   # system prompt and deterministic mood model
+
 phantom/
   main.py          # thin stdlib-only entry: argv -> cli.main, exit codes
   cli.py           # argparse tree, dispatch, error presentation
   config.py        # Settings, env/CLI precedence, path and host validation
   errors.py        # typed errors + exit codes
-  ollama_client.py # ChatBackend protocol + Ollama wrapper; lazy import
-  memory.py        # SQLite schema/migrations, memories, mood persistence
-  personality.py   # system prompt, deterministic mood model (pure logic)
+  storage.py       # archive/mood helpers
+  views.py         # shared status, memory, and inspection views
   chat.py          # ChatSession, bounded history, slash commands
   inspection.py    # safe scan, TODO extraction, grounded report
   render.py        # Rich theme, streaming renderer, animations, plain mode
+  art.py           # custom ASCII marks and the compact sigil
   commands/        # one small module per command
+
+docs/DEMO.md       # recording guide
+scripts/demo.py    # automated end-to-end demo
 tests/             # pytest, tmp_path, fake backend, no real Ollama
 README.md          # required sections from AGENTS.md
 TASKS.md           # this file
 pyproject.toml     # metadata, deps, pytest config, console script
+LICENSE            # MIT (confirmed by the project owner)
 .gitignore         # DB/WAL, .venv, caches, .env
-LICENSE            # decision needed (MIT recommended)
 ```
 
-Dependency direction: `main -> cli -> commands -> {config, memory, ollama_client, personality, chat, inspection, render}`. Lower layers never import `cli` or `commands`. `main.py` stays stdlib-only so `--help` works even when optional deps are missing.
+Dependency direction: `main -> cli -> commands -> {config, storage, chat,
+inspection, render}` plus `core/{brain,memory,personality}`. Lower layers never
+import `cli` or `commands`. `main.py` stays stdlib-only so `--help` works even
+when optional deps are missing.
 
 ## Milestones
 
 ### M0 — Repository baseline and packaging
 
-- [ ] Rename `Agents.md` to `AGENTS.md` (case-only rename via temporary name).
-- [ ] Initialize git and add `.gitignore` (`.venv`, `__pycache__`, `.pytest_cache`, `*.db`, `*.db-wal`, `*.db-shm`, `.phantom/`, `.env`).
-- [ ] Add `pyproject.toml` with `requires-python = ">=3.11"`, `ollama>=0.6,<0.7`, `rich>=15,<16`, `httpx>=0.27,<1`, dev `pytest>=9,<10`, console script `phantom = "phantom.main:main"`, and pytest config.
-- [ ] Add package skeleton and a `README.md` stub that clearly says it is incomplete.
-- [ ] Keep `main.py` free of Rich/Ollama imports; handlers import lazily.
+- [x] Rename `Agents.md` to `AGENTS.md` (case-only rename via temporary name).
+- [x] Initialize git and add `.gitignore` (`.venv`, `__pycache__`, `.pytest_cache`, `*.db`, `*.db-wal`, `*.db-shm`, `.phantom/`, `.env`).
+- [x] Add `pyproject.toml` with `requires-python = ">=3.11"`, `ollama>=0.6,<0.7`, `rich>=15,<16`, `httpx>=0.27,<1`, dev `pytest>=9,<10`, console script `phantom = "phantom.main:main"`, and pytest config.
+- [x] Add package skeleton and a complete `README.md`.
+- [x] Keep `main.py` free of Rich/Ollama imports; handlers import lazily.
 - **Acceptance:** `python -m phantom.main --help` exits 0 with no database created; `pip install -e ".[dev]"` succeeds; `python -m pytest --collect-only` collects tests; importing `phantom.main` does not require Ollama.
 
 ### M1 — CLI shell, config, errors, status, awaken
 
-- [ ] Implement all eight subcommands with useful help and examples: `awaken`, `chat`, `inspect`, `remember`, `memories`, `forget`, `status`, `exorcise`.
-- [ ] Common options usable before or after the subcommand: `--model`, `--host`, `--db`, `--plain`, `--no-animation`, `--debug`, `--timeout`.
-- [ ] Precedence: CLI > environment (`PHANTOM_MODEL`, `PHANTOM_HOME`, `PHANTOM_DB`, `PHANTOM_TIMEOUT`, standard `OLLAMA_HOST`) > defaults. Default model `qwen3:8b`; default DB `~/.phantom/phantom.db`.
-- [ ] Typed errors with exit codes: 0 success, 2 usage, 3 dependency/Ollama, 4 database, 5 inspection, 130 interrupted. No traceback unless `--debug`.
-- [ ] `status` performs real checks: host, Ollama reachability, installed-model presence, DB path/integrity/schema, memory count, mood. `--json` for tests/scripts.
-- [ ] `awaken` performs real checks, initializes the DB, and prints an introduction. Missing Ollama is a warning, not a fake success; `--strict` makes it exit 3.
-- [ ] Refuse non-loopback Ollama hosts by default; require an explicit `--allow-remote-ollama` acknowledgement with a privacy warning.
+- [x] Implement all eight subcommands with useful help and examples: `awaken`, `chat`, `inspect`, `remember`, `memories`, `forget`, `status`, `exorcise`.
+- [x] Common options usable before or after the subcommand: `--model`, `--host`, `--db`, `--plain`, `--no-animation`, `--debug`, `--timeout`.
+- [x] Precedence: CLI > environment (`PHANTOM_MODEL`, `PHANTOM_HOME`, `PHANTOM_DB`, `PHANTOM_TIMEOUT`, standard `OLLAMA_HOST`) > defaults. Default model `qwen3:8b`; default DB `~/.phantom/phantom.db`.
+- [x] Typed errors with exit codes: 0 success, 2 usage, 3 dependency/Ollama, 4 database, 5 inspection, 130 interrupted. No traceback unless `--debug`.
+- [x] `status` performs real checks: host, Ollama reachability, installed-model presence, DB path/integrity/schema, memory count, mood. `--json` for tests/scripts.
+- [x] `awaken` performs real checks, initializes the DB, and prints an introduction. Missing Ollama is a warning, not a fake success; `--strict` makes it exit 3.
+- [x] Refuse non-loopback Ollama hosts by default; require an explicit `--allow-remote-ollama` acknowledgement with a privacy warning.
 - **Acceptance:** parser tests cover every command, missing args, invalid paths, and global-flag placement; `status` works with Ollama down and with a corrupted DB; `awaken` creates the DB only when it actually initializes storage; plain output contains no ANSI escapes.
 
 ### M2 — SQLite memory and memory commands
 
-- [ ] Schema v1 with `PRAGMA user_version`, `schema_meta`, `memories`, `mood_state`, and `mood_events`; parameterized SQL only.
-- [ ] `memories`: UUID string ID, non-empty content, origin (`user`), UTC timestamps; separate from conversation history and mood tables.
-- [ ] `remember "TEXT"` validates non-empty input and stores it; `memories` lists ID prefix, local timestamp, origin, content; `forget ID` accepts a full ID or unique prefix, refuses ambiguity, and confirms unless `--yes`.
-- [ ] Relevant retrieval: deterministic keyword/recency scoring, top 5; no embeddings and no model-generated memories.
-- [ ] WAL mode, `busy_timeout`, `foreign_keys`, 0700 directory / 0600 file on POSIX.
-- [ ] Handle empty DB, first-run initialization, corrupt DB, newer schema, read-only DB, malformed rows, and SQL-injection-shaped input with actionable errors. Never auto-delete or auto-repair memories.
-- [ ] Do not persist full conversations by default; chat history stays in memory for the session.
+- [x] Schema v1 with `PRAGMA user_version`, `schema_meta`, `memories`, `mood_state`, and `mood_events`; parameterized SQL only.
+- [x] `memories`: UUID string ID, non-empty content, origin (`user`), UTC timestamps; separate from conversation history and mood tables.
+- [x] `remember "TEXT"` validates non-empty input and stores it; `memories` lists ID prefix, local timestamp, origin, content; `forget ID` accepts a full ID or unique prefix, refuses ambiguity, and confirms unless `--yes`.
+- [x] Relevant retrieval: deterministic keyword/recency scoring, top 5; no embeddings and no model-generated memories.
+- [x] WAL mode, `busy_timeout`, `foreign_keys`, 0700 directory / 0600 file on POSIX.
+- [x] Handle empty DB, first-run initialization, corrupt DB, newer schema, read-only DB, malformed rows, and SQL-injection-shaped input with actionable errors. Never auto-delete or auto-repair memories.
+- [x] Do not persist full conversations by default; chat history stays in memory for the session.
 - **Acceptance:** CRUD and persistence across separate connections; ambiguous prefix lists matches and deletes nothing; corrupt DB produces exit 4 without a traceback; a sentinel row survives every failed operation; schema version is checked.
 
 ### M3 — Ollama integration and streaming
 
-- [ ] `ChatBackend` protocol plus `OllamaBackend` using `ollama.Client` (lazy import). Fake backend for tests.
-- [ ] Preflight: `client.list()`; exact model match with `:latest` equivalence; missing model error names `ollama pull <model>`; never auto-pull or start `ollama serve`.
-- [ ] Streaming chat via `/api/chat`: handle `message.content`, optional `message.thinking`, final `done`, and metrics. Suppress thinking by passing `think=False` only when `show(model).capabilities` includes `thinking`.
-- [ ] Timeouts: short connect timeout, generous read timeout (default 300 s, configurable), `num_ctx=4096`, `num_predict` cap, `keep_alive` left to Ollama.
-- [ ] Map `ConnectionError`, `ResponseError`, `httpx` timeouts, 404, empty streams, and mid-stream failures to friendly errors with recovery hints.
-- [ ] Cancellation: `KeyboardInterrupt` closes the stream, prints an interrupted marker, and does not append the partial answer to history.
+- [x] `ChatBackend` protocol plus `OllamaBackend` using `ollama.Client` (lazy import). Fake backend for tests.
+- [x] Preflight: `client.list()`; exact model match with `:latest` equivalence; missing model error names `ollama pull <model>`; never auto-pull or start `ollama serve`.
+- [x] Streaming chat via `/api/chat`: handle `message.content`, optional `message.thinking`, final `done`, and metrics. Suppress thinking by passing `think=False` only when `show(model).capabilities` includes `thinking`.
+- [x] Timeouts: short connect timeout, generous read timeout (default 300 s, configurable), `num_ctx=4096`, `num_predict` cap, `keep_alive` left to Ollama.
+- [x] Map `ConnectionError`, `ResponseError`, `httpx` timeouts, 404, empty streams, and mid-stream failures to friendly errors with recovery hints.
+- [x] Cancellation: `KeyboardInterrupt` closes the stream, prints an interrupted marker, and does not append the partial answer to history.
 - **Acceptance:** unit tests with a fake backend cover success, missing model, connection refused, timeout, empty stream, thinking chunks, and mid-stream failure; a manual live smoke test with `qwen3:8b` is recorded; no network call leaves localhost.
 
 ### M4 — Chat loop, personality, and mood
 
-- [ ] `ChatSession` with system prompt + bounded history (about 12 turns / 6,000 chars), dropping oldest turns first.
-- [ ] Slash commands: `/exit`, `/quit`, `/bye`, `/help`, `/remember`, `/memories`, `/forget`, `/status`, `/mood`, `/clear`.
-- [ ] System prompt: eerie, observant, restrained, occasionally sarcastic; concise; no repetitive catchphrases; no invented observations; no claims of running commands or reading files; no tools are passed to the model.
-- [ ] Mood: three deterministic axes (`curiosity`, `warmth`, `wariness`), fixed event deltas, clamping, threshold labels, persisted state plus recent grounded evidence. No randomness, no sentiment inference, no model-written mood.
-- [ ] Mood affects tone subtly in the prompt; it never invents events. `mood` shows axes and the actual recorded evidence.
-- [ ] Memory context labels each entry as user-supplied with ID/date; do not blend it into assistant history as if the model said it.
+- [x] `ChatSession` with system prompt + bounded history (about 12 turns / 6,000 chars), dropping oldest turns first.
+- [x] Slash commands: `/exit`, `/quit`, `/bye`, `/help`, `/remember`, `/memories`, `/forget`, `/status`, `/mood`, `/clear`.
+- [x] System prompt: eerie, observant, restrained, occasionally sarcastic; concise; no repetitive catchphrases; no invented observations; no claims of running commands or reading files; no tools are passed to the model.
+- [x] Mood: three deterministic axes (`curiosity`, `warmth`, `wariness`), fixed event deltas, clamping, threshold labels, persisted state plus recent grounded evidence. No randomness, no sentiment inference, no model-written mood.
+- [x] Mood affects tone subtly in the prompt; it never invents events. `mood` shows axes and the actual recorded evidence.
+- [x] Memory context labels each entry as user-supplied with ID/date; do not blend it into assistant history as if the model said it.
 - **Acceptance:** scripted chat tests cover normal turns, slash commands, EOF, empty input, Ctrl+C, and backend failure; mood transition tests are deterministic and clamped; persistence across sessions; no conversation rows are written to SQLite.
 
 ### M5 — Safe project inspection
@@ -145,20 +179,48 @@ Dependency direction: `main -> cli -> commands -> {config, memory, ollama_client
 
 ### M7 — Hardening, documentation, and release
 
-- [ ] README sections: purpose and hackathon theme; features; architecture; prerequisites/install; Ollama setup and model configuration; command examples; privacy/security design; testing; known limitations; demo plan; open-source rationale. State clearly that Ollama and the model must be downloaded once.
-- [ ] `docs/` optional: architecture, security/threat model, demo script. README remains the source of truth.
-- [ ] Add `LICENSE` (MIT recommended, pending approval) and verify `pyproject.toml` metadata.
-- [ ] Fresh-venv install test; run every documented command from the repo root; run the full test suite; fix regressions before moving on.
-- [ ] Manual live checks: `awaken`, `status`, `chat` with a real stream, `remember`/`memories`/`forget`, `inspect` on a temp project, `exorcise`.
+- [x] README sections: purpose and hackathon theme; features; architecture; prerequisites/install; Ollama setup and model configuration; command examples; privacy/security design; testing; known limitations; demo plan; open-source rationale. State clearly that Ollama and the model must be downloaded once.
+- [x] `docs/DEMO.md` recording guide and `scripts/demo.py` automated demo; README remains the source of truth.
+- [x] Add `LICENSE` (MIT confirmed by the project owner) and verify `pyproject.toml` metadata (`License-Expression: MIT`).
+- [x] Fresh-venv install test; run every documented command from the repo root; run the full test suite; fix regressions before moving on.
+- [x] Manual live checks: `awaken`, `status`, `chat` with a real stream, `remember`/`memories`/`forget`, `inspect` on a temp project, `exorcise`.
 - **Acceptance:** full pytest suite passes; fresh install works; all eight commands work; README matches behavior; no unsupported claims; no cloud AI calls; `inspect` leaves the target tree byte-identical.
 
 ### M8 — Demo and challenge submission (after code is done)
 
-- [ ] Record a short demo: awaken, ask a grounded question, remember/recall across a restart, inspect a small project, exorcise.
-- [ ] Capture screenshots and a repo URL; ensure the repository is public and licensed.
-- [ ] Draft the DEV submission with `#hf26challenge`, explain local inference/open innovation, and disclose AI assistance.
+- [x] Write a demo script showing awaken, a useful interaction, remember/recall
+  across a restart, inspect a small project, status, and exorcise
+  (`scripts/demo.py`, `docs/DEMO.md`).
+- [ ] Record the demo and capture screenshots.
+- [ ] Confirm the repository is public and licensed
+  (`https://github.com/sufiankhan-dev/Phantom.git`).
+- [ ] Draft the DEV submission with `#hf26challenge`, explain local
+  inference/open innovation, and disclose AI assistance.
 - [ ] Submit before **2026-10-31 06:59 UTC** (11:59 PM PDT on Oct 31).
-- **Acceptance:** submission includes working repo, demo, setup instructions, privacy explanation, and the required tag.
+- **Acceptance:** submission includes working repo, demo, setup instructions,
+  privacy explanation, and the required tag.
+
+## Verification log (2026-10-30)
+
+| Command | Observed result |
+| --- | --- |
+| `python -m pytest -q` | 180 passed, 2 skipped (symlink privilege) |
+| Fresh venv `pip install -e ".[dev]"` | install succeeded, `phantom --version` -> `PHANTOM 0.1.0` |
+| `python -m phantom.main awaken --db ... --plain --no-animation` | exit 0, all checks ok, `qwen3:8b` available |
+| `python -m phantom.main status --json` | exit 0, valid JSON, model available, archive healthy |
+| `python -m phantom.main remember ...` | exit 0, record stored with UUID and `user` origin |
+| `python -m phantom.main memories` in a new process | exit 0, record persisted |
+| `python -m phantom.main forget <prefix> --yes` | exit 0, one record deleted, nothing else touched |
+| `python -m phantom.main chat` with piped input | exit 0, live stream, 25 tokens at 5.2 tok/s |
+| `python -m phantom.main inspect <temp-project> --no-ai` | exit 0, `.env` and `node_modules` skipped, TODO at `app.py:5` |
+| `python -m phantom.main inspect <temp-project>` | exit 0, separated model interpretation, 123.8 s on CPU |
+| `python -m phantom.main exorcise` | exit 0, memory count preserved |
+| `python -m phantom.main inspect <missing path>` | exit 2 |
+| `python -m phantom.main inspect <secret file>` | exit 5 |
+| `python -m phantom.main status --host http://127.0.0.1:9` | exit 3 |
+| `python -m phantom.main status --host http://example.com:11434` | exit 2, non-local host refused |
+| `scripts/demo.py --no-chat` | all steps completed, no real archive or project touched |
+| `scripts/demo.py` | exit 0; full run including a live 41-token chat turn |
 
 ## Cross-cutting acceptance criteria
 
@@ -174,9 +236,19 @@ Dependency direction: `main -> cli -> commands -> {config, memory, ollama_client
 
 ## Open decisions
 
-1. **License:** MIT recommended for hackathon submission; needs approval.
-2. **Git remote:** no repository exists yet; GitHub URL is required for the challenge.
-3. **Python support:** local runtime is 3.14.3; `requires-python` will be `>=3.11`. CI should cover 3.11–3.14 if available.
-4. **Conversation history:** recommend memory-only by default; optional opt-in persistence only if it can be bounded and documented.
-5. **Demo model:** `qwen3:8b` is the required default but runs 100% CPU here. `gemma3:4b` is installed and faster; keep it as an explicit `--model` option, not a silent fallback.
-6. **Gemma prize category:** only pursue “Best Use of Gemma” if Gemma is genuinely supported and demonstrated; do not claim it for a model swap alone.
+1. **License:** resolved. MIT, confirmed by the project owner; `LICENSE` and
+   `pyproject.toml` now carry it.
+2. **Git remote:** resolved. `origin` is
+   `https://github.com/sufiankhan-dev/Phantom.git`; public visibility still
+   needs confirmation before submission.
+3. **Python support:** local runtime is 3.14.3; `requires-python` is `>=3.11`.
+   Only 3.14.3 on Windows was exercised here. CI should cover 3.11-3.14 and
+   POSIX if time allows.
+4. **Conversation history:** resolved. Memory-only by default; no transcript
+   rows are written.
+5. **Demo model:** `qwen3:8b` is the default and was used for the live checks.
+   `gemma3:4b` is installed and available through `--model`, but the live chat
+   and inspection results recorded here used `qwen3:8b`.
+6. **Gemma prize category:** not claimed. A `--model` swap alone is not a
+   meaningful Gemma integration; do not enter that category without real,
+   documented Gemma-specific work.

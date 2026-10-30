@@ -266,6 +266,9 @@ def test_external_ollama_host_is_refused(tmp_path):
     result = run_cli(["status", "--host", "http://10.1.2.3:11434"], tmp_path)
     assert result.code == 2
     assert "non-local" in result.err
+    # The recovery advice must appear once: as the hint, not duplicated in the
+    # message as well.
+    assert result.err.count("PHANTOM only talks to a local Ollama") == 1
 
 
 # -- remember / memories ----------------------------------------------

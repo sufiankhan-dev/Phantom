@@ -9,35 +9,55 @@ SQLite, a small deterministic mood model, and a restrained horror-inspired
 terminal experience.
 
 It is meant to be useful first and atmospheric second. Every status, memory,
-and model result shown by the CLI comes from a real check or a real local
-operation.
+model result, and inspection finding shown by the CLI comes from a real check or
+a real local operation.
 
-## Why open source and local matter
+## Why open source AI matters
 
-PHANTOM never calls a paid cloud AI API. Prompts and responses travel only
-between this program and a loopback Ollama service on the same machine. That
-means:
+PHANTOM exists to show a different default for AI tooling: the model runs where
+the work happens, and the user can see and change the whole system.
 
-- your prompts, memories, and project notes are not sent to a vendor;
-- the application keeps working without an internet connection once Python
-  dependencies and an Ollama model have been downloaded;
-- the behaviour is inspectable and replaceable, because the whole boundary is
-  a few small Python modules;
-- there is no account, API key, subscription, or usage meter.
+- **Local inference.** Prompts and responses travel between this program and an
+  Ollama service on the same machine. There is no cloud AI endpoint, no API key,
+  no account, and no usage meter in the code path.
+- **User-controlled data.** Memories are stored in a local SQLite file that the
+  user can inspect, back up, or delete. Conversation transcripts are not
+  persisted by default. PHANTOM does not include telemetry.
+- **Model choice.** The model is a configuration value, not a vendor
+  relationship. Any model installed in Ollama can be selected with `--model` or
+  `PHANTOM_MODEL`. `qwen3:8b` is the default; a smaller installed model can be
+  used when a laptop has no GPU.
+- **Less dependence on proprietary APIs.** The only network boundary is one
+  small module, `core/brain.py`, and it speaks to Ollama. There is no silent
+  fallback to a paid provider. Replacing the backend does not require rewriting
+  the CLI, memory system, or inspector.
+- **Inspectable and modifiable.** The project is small, typed, tested, and
+  licensed under MIT. You can read how memory recall works, replace the mood
+  model, add a command, audit the inspection rules, or fork the project without
+  asking permission.
+- **Honest limits.** Local models can be slower and less capable than large
+  hosted models. Open source does not make a model correct; it makes the
+  surrounding system auditable. PHANTOM labels model interpretation as a
+  hypothesis and keeps scanner evidence separate.
 
-PHANTOM is not "offline installable" from nothing: Python packages, Ollama, and
-at least one model must be downloaded once. After that setup, inference and
-memory are local.
+PHANTOM is not "offline installable" from nothing. Python packages, Ollama, and
+at least one model must be downloaded once, which requires internet access.
+After that setup, the runtime path is local: the only host PHANTOM contacts by
+default is `127.0.0.1`.
+
+A fully disconnected run was not separately instrumented for this submission.
+What was verified is a live stream against a loopback Ollama service and code
+that rejects non-loopback hosts unless the user explicitly opts in.
 
 ## Features
 
 - **Local inference only** through Ollama, with no cloud fallback.
 - **Streaming chat** with bounded in-memory history and slash commands.
+- **Explicit memory** in a versioned SQLite archive with stable UUIDs and
+  timestamps. Conversations are not persisted by default.
 - **Read-only project inspection** with evidence-based findings, `path:line`
   markers, size and count limits, secret and binary refusal, and an optional
   local-model interpretation that is clearly labelled as unverified.
-- **Explicit memory** in a versioned SQLite archive with stable UUIDs and
-  timestamps. Conversations are not persisted by default.
 - **Grounded mood** derived deterministically from real events such as saving a
   memory or failing to reach Ollama. The model never writes its own mood.
 - **Real status checks**: Ollama reachability, installed model presence,
@@ -59,29 +79,27 @@ memory are local.
 ## Terminal experience
 
 The interface is meant to be memorable in a recording and still usable in a
-plain shell. It follows a few rules:
+plain shell:
 
 - **Identity.** A custom ASCII ghost marks the application. A wide, styled
   terminal gets the full nine-line mark; plain mode, narrow terminals, and
   redirected output get a compact three-line sigil so nothing wraps into noise.
-  Section titles are short and consistent; awakening and session sections use
-  uppercase labels, and every status has a text marker as well as a colour.
 - **Awakening.** `awaken` reveals the mark line by line, checks Python, the
   Ollama package, the archive, and the local model, then prints the
-  introduction and a final line that reflects the real model state. The reveal
-  is under a third of a second and can be skipped with `--no-animation`.
+  introduction and a line that reflects the real model state. The reveal is
+  under a third of a second and can be skipped with `--no-animation`.
 - **Conversation.** `chat` opens with the compact mark and a session panel.
-  Responses stream directly from the model; there is no artificial typing
-  delay and no fabricated activity. When Ollama reports `eval_count` and
-  `eval_duration`, a dim `[i]` receipt shows the measured token count and
-  tokens per second.
+  Responses stream directly from the model; there is no artificial typing delay
+  and no fabricated activity. When Ollama reports `eval_count` and
+  `eval_duration`, a dim `[i]` receipt shows the measured token count and tokens
+  per second.
 - **Shutdown.** `exorcise` prints the closed-eye mark, two fading lines, a real
   shutdown summary, and the final rule `the cursor goes dark`. It never deletes
   anything.
 - **Progress and errors.** Spinners wrap only operations that are actually
   running. Plain and non-interactive runs print one stable `...` line instead.
-  The spinner stops before any report or error, and errors are always printed
-  in full with an actionable hint.
+  The spinner stops before any report or error, and errors are printed in full
+  with an actionable hint.
 - **Interruption and EOF.** `Ctrl+C` during a reply cancels that answer without
   adding it to history. `Ctrl+C` or `EOF` at the prompt closes the session
   cleanly. Non-interactive execution therefore ends with a clear closing note
@@ -89,13 +107,12 @@ plain shell. It follows a few rules:
 
 Animation is enabled only when stdout is an interactive terminal, `--plain` is
 absent, `NO_COLOR` is unset, `TERM` is not `dumb`, and `--no-animation` is not
-given. Startup and shutdown animations are deliberately short and never delay
-a result that is already available.
+given.
 
 ## Architecture
 
 ```
-core/                     existing local engine
+core/                     local engine
   brain.py                the only Ollama boundary; validation, streaming, errors
   memory.py               versioned SQLite schema, memories, mood persistence
   personality.py          system prompt and deterministic mood model
@@ -111,11 +128,16 @@ phantom/                  command line presentation
   chat.py                 interactive session and slash commands
   inspection.py           safe scanner, prompt boundary, citation checks
   commands/               one small module per command
+
+tests/                    pytest suite with a fake model backend
+scripts/demo.py           automated end-to-end demonstration
+docs/DEMO.md              recording script and claims to avoid
 ```
 
 Dependency direction is one way: `phantom` imports `core`; `core` never imports
 `phantom`. Importing either package does not contact Ollama or create a
-database.
+database. `phantom/main.py` stays standard-library only so `--help` works even
+when optional dependencies are missing.
 
 ## Prerequisites
 
@@ -125,18 +147,23 @@ database.
 
 PHANTOM never downloads a model or starts `ollama serve` for you.
 
+This submission was developed and tested on Windows with Python **3.14.3**.
+The project targets Python 3.11+ and uses cross-platform standard-library APIs,
+but it was not re-tested on Python 3.11–3.13 or on a POSIX system here.
+
 ## Installation
 
 ```bash
-git clone <your-repository-url>
-cd phantom
+git clone https://github.com/sufiankhan-dev/Phantom.git
+cd Phantom
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # POSIX:   source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-You can also run it without installing, from the repository root:
+The editable install was verified in a fresh virtual environment on
+2026-10-30. You can also run it without installing, from the repository root:
 
 ```bash
 python -m phantom.main --help
@@ -148,13 +175,17 @@ After `pip install -e .`, the `phantom` console script is also available:
 phantom --help
 ```
 
-## Ollama setup
+## Ollama setup and model configuration
 
 ```bash
 ollama serve          # only if it is not already running
 ollama pull qwen3:8b
 ollama list           # confirm the model is present
 ```
+
+At the time of verification the test machine had Ollama **0.40.4**, with
+`qwen3:8b` and `gemma3:4b` installed. Live inference for this submission used
+`qwen3:8b`; no GPU benchmark was performed.
 
 Configuration precedence is **command line > environment > defaults**.
 
@@ -168,25 +199,32 @@ Configuration precedence is **command line > environment > defaults**.
 | Remote host opt-in | `--allow-remote-ollama` | `PHANTOM_ALLOW_REMOTE_OLLAMA=1` | disabled |
 
 Only loopback hosts are accepted by default. Pointing PHANTOM at another host
-requires an explicit acknowledgement, because prompts would then leave the
-machine.
+requires an explicit acknowledgement, because prompts and inspected file
+excerpts would then leave the machine.
+
+If the selected model is missing, PHANTOM prints the exact install command
+(`ollama pull NAME`) and stops. It never pulls a model or starts a service on
+its own, and it never silently swaps in a different model.
 
 ## Commands
 
 All commands run from the repository root. Global options such as `--model`,
-`--db`, `--plain`, and `--no-animation` work before or after the subcommand.
+`--host`, `--db`, `--timeout`, `--plain`, `--no-animation`, and `--debug` work
+before or after the subcommand.
 
 ### `awaken`
 
 ```bash
 python -m phantom.main awaken
+python -m phantom.main awaken --strict
 ```
 
 Displays the startup sequence, checks Python, the Ollama package, the memory
 archive, and the local model, initializes storage, and introduces PHANTOM. The
 ASCII mark reveals briefly when animation is safe; the real check results are
-shown as they complete. A missing model is a warning; use `--strict` to make it
-exit 3.
+shown as they complete. A missing model is a warning and the command still
+initializes storage and introduces the entity; `--strict` makes that condition
+exit `3` after the check table.
 
 ### `chat`
 
@@ -221,6 +259,7 @@ closes the session cleanly.
 python -m phantom.main inspect .
 python -m phantom.main inspect src --no-ai
 python -m phantom.main inspect . --max-files 50
+python -m phantom.main inspect . --max-file-bytes 131072 --max-total-bytes 2097152
 ```
 
 Scans a file or directory in read-only mode. The scanner reports only what it
@@ -242,8 +281,9 @@ Default limits:
 | Directory depth | `--max-depth N` | 15 |
 
 `--no-ai` prints only the deterministic scanner report and never creates a
-model client. If Ollama is unavailable, the command still exits `0` with the
-static report and a warning; inspection does not depend on the model.
+model client. If Ollama is unavailable during a normal run, the command still
+exits `0` with the static report and a warning; inspection does not depend on
+the model.
 
 Safety behaviour:
 
@@ -252,8 +292,8 @@ Safety behaviour:
   skipped.
 - Secret-like names are refused before opening: `.env*`, private keys,
   `*.pem`, `*.key`, `id_rsa*`, `.npmrc`, `.pypirc`, `.netrc`,
-  credential/secret stores, and `.ssh`/`.aws`/`.azure`/`.gnupg`/`.kube`
-  directories. Files containing private-key material are refused too.
+  credential/secret stores, and `.ssh`/`.aws`/`.azure`/`.gnupg`/`.kube`/
+  `.docker` directories. Files containing private-key material are refused too.
 - Binary files and non-UTF-8 files are skipped. Oversized files, the total byte
   budget, the file count, and the depth limit are enforced with explicit
   warnings and a truncation indicator.
@@ -275,9 +315,9 @@ or otherwise unreadable target.
 python -m phantom.main remember "I prefer pytest and short answers."
 ```
 
-Stores the exact user supplied text with a UUID and UTC timestamp. The archive
-labels it as `user` origin. Empty text and text over 4,000 characters are
-rejected.
+Stores the supplied text, with leading and trailing whitespace trimmed, using a
+UUID and UTC timestamp. The archive labels it as `user` origin. Empty text and
+text over 4,000 characters are rejected.
 
 ### `memories`
 
@@ -296,9 +336,9 @@ python -m phantom.main forget 1a2b3c4d --yes
 ```
 
 Shows the selected memory, asks for confirmation, and deletes only that record.
-A full UUID or a unique prefix of at least four hexadecimal characters is
-accepted. Ambiguous prefixes are refused. `--yes` skips the prompt; without it,
-a non-interactive invocation fails and deletes nothing.
+A full UUID or a unique prefix of at least four characters is accepted.
+Ambiguous prefixes are refused. `--yes` skips the prompt; without it, a
+non-interactive invocation fails and deletes nothing.
 
 ### `status`
 
@@ -335,14 +375,17 @@ and reports how many memories remain.
 
 ## Privacy and security design
 
-- Only loopback Ollama hosts are contacted by default. HTTP proxy environment
-  variables and redirects are not trusted for the local client.
+- Only loopback Ollama hosts are contacted by default. The HTTP client sets
+  `trust_env=False` and `follow_redirects=False`, so proxy environment
+  variables and redirects cannot silently move a prompt to another host.
+- There is no cloud AI provider, no fallback endpoint, no telemetry, and no
+  account or API key.
 - Memory text is user supplied and stored separately from AI interpretations.
   Interpretations never appear in memory recall or prompts.
 - Full conversations are not written to SQLite. Only explicit memories, mood
   state, and short mood event labels are stored.
-- The database uses parameterized SQL, a versioned schema, WAL mode, and a
-  busy timeout. Existing databases are validated, never repaired or truncated.
+- The database uses parameterized SQL, a versioned schema, WAL mode, and a busy
+  timeout. Existing databases are validated, never repaired or truncated.
 - Model output is stripped of terminal escape sequences and control characters
   before display.
 - PHANTOM never executes model-generated commands and never modifies inspected
@@ -354,6 +397,8 @@ and reports how many memories remain.
   produces is checked against the scanner's list of files actually read.
 - Memory deletion happens only for one explicitly identified record, after
   confirmation.
+- If remote Ollama is explicitly allowed, prompts and inspected excerpts leave
+  the machine. That opt-in is documented and is not the default privacy posture.
 
 ## Testing
 
@@ -369,11 +414,43 @@ plain mode is ASCII-only, narrow terminals fall back to the compact mark,
 animation never sleeps on a redirected or plain stream, and chat metrics are
 printed only when the model actually reports them.
 
-Current suite: **180 tests passing, 2 skipped** on Windows (symlink creation
-requires a privilege that the test environment does not have; a separate
-root-containment test still runs). Live `inspect` inference was also checked
-against local `qwen3:8b`, and `chat` was run with `gemma3:4b` to confirm real
-streaming and measured token receipts.
+Current result on Windows with Python 3.14.3:
+
+```text
+180 passed, 2 skipped
+```
+
+The two skipped tests require symlink creation, which the test environment does
+not permit without an extra Windows privilege. A separate root-containment test
+still runs. The same suite was re-run inside a fresh virtual environment after
+`pip install -e ".[dev]"` and produced the same result.
+
+Live checks were also performed outside the suite with real `qwen3:8b`
+inference; they are summarized below.
+
+## Verification summary
+
+Verified on 2026-10-30 in this repository:
+
+| Check | Result |
+| --- | --- |
+| `python -m pytest -q` | 180 passed, 2 skipped |
+| Fresh venv, `pip install -e ".[dev]"` | succeeded; `phantom --version` printed `PHANTOM 0.1.0` |
+| Installed metadata | `License-Expression: MIT` |
+| `awaken --plain --no-animation` | exit 0; all checks `[ok]` with `qwen3:8b` |
+| `status --json` | exit 0; model available, database healthy, valid JSON |
+| `remember`, `memories`, `forget --yes` | exit 0; records persisted across separate processes |
+| `chat` with piped input | exit 0; live stream, 25 tokens at 5.2 tok/s |
+| `inspect --no-ai` | exit 0; `.env` and `node_modules` skipped, TODO located at `app.py:5` |
+| `inspect` with live model | exit 0; separate interpretation panel, 123.8 s wall time |
+| `exorcise` | exit 0; archive unchanged, memory count preserved |
+| `scripts/demo.py` (full) | exit 0; live chat turn 41 tokens at 4.1 tok/s |
+| Invalid path | exit 2 |
+| Secret file target | exit 5 |
+| Unreachable Ollama host | exit 3 |
+| Non-loopback host without opt-in | exit 2 |
+
+These are observations from one machine, not general performance claims.
 
 ## Known limitations
 
@@ -388,35 +465,57 @@ streaming and measured token receipts.
   `package.json`, `Cargo.toml`, `go.mod`, and `requirements.txt`; other
   ecosystems are reported through their files and names only.
 - `qwen3:8b` may run entirely on CPU and can be slow on laptops without a GPU.
-  Use `--model` with a smaller installed model for faster demonstrations.
+  The live inspection above took about two minutes. Use `--model` with a
+  smaller installed model for faster demonstrations.
 - Conversation history is intentionally not persisted, so restarting `chat`
   starts a fresh transcript. Memories persist.
 - The schema has no migration path yet. A database from a newer version is
   refused rather than modified.
 - Remote Ollama is supported only as an explicit opt-in and is not the intended
   privacy posture.
+- Only Python 3.14.3 on Windows was exercised for this submission. The code
+  targets 3.11+, but other versions and POSIX were not re-tested here.
+- No GPU acceleration, throughput, or model-quality benchmark is claimed.
 
 ## Demonstration plan
 
-1. `python -m phantom.main awaken` - show the ASCII mark, the real dependency
-   checks, and the introduction.
-2. `python -m phantom.main remember "I prefer pytest and short answers."`
-3. `python -m phantom.main memories` - show the ID, timestamp, and user origin.
-4. `python -m phantom.main chat` - ask a programming question, show real
-   streaming and the measured token receipt, then ask something that uses the
-   stored memory.
-5. `python -m phantom.main inspect . --no-ai` - show confirmed findings, a
-   skipped secret, and TODO locations, then run without `--no-ai` to show the
-   clearly separated model interpretation.
-6. `python -m phantom.main status` - show the model, archive health, and count.
-7. `python -m phantom.main forget <id>` - demonstrate confirmation.
-8. `python -m phantom.main exorcise` - show the closed-eye mark, the shutdown
-   summary, and that memories remain.
-9. Restart and run `memories` again to prove persistence across sessions.
-10. `python -m phantom.main awaken --plain --no-animation` - show the ASCII
-    fallback and confirm that the same real checks appear without animation.
+The full recording script is in [`docs/DEMO.md`](docs/DEMO.md). A short version:
+
+1. `python -m phantom.main awaken --db .phantom-demo.db` - show the mark, real
+   dependency checks, and the introduction.
+2. `python -m phantom.main remember "I prefer pytest and short, evidence-based answers." --db .phantom-demo.db`
+3. `python -m phantom.main chat --db .phantom-demo.db` - ask a question that the
+   stored preference helps with, show the real stream and measured receipt,
+   then `/exit`.
+4. `python -m phantom.main memories --db .phantom-demo.db` - run in a new
+   process and show that the memory survived.
+5. `python -m phantom.main inspect . --db .phantom-demo.db --no-ai` - show
+   confirmed findings and TODO locations. Omit `--no-ai` for the labelled model
+   interpretation.
+6. `python -m phantom.main status --db .phantom-demo.db` - show model, archive,
+   schema, count, and mood.
+7. `python -m phantom.main exorcise --db .phantom-demo.db` - show the shutdown
+   summary and that nothing was deleted.
+8. `python -m phantom.main memories --db .phantom-demo.db` - prove persistence
+   again.
+9. `python -m phantom.main awaken --plain --no-animation --db .phantom-demo.db`
+   - show the plain fallback.
+
+An automated version that uses a temporary archive and a generated sample
+project is included:
+
+```bash
+python scripts/demo.py            # full demo, including one model turn
+python scripts/demo.py --no-chat  # fast smoke demo
+python scripts/demo.py --model gemma3:4b
+```
 
 ## License
 
-No license file has been added yet. Choose one before publishing the
-repository; MIT is a common choice for hackathon projects.
+PHANTOM is released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 sufiankhan-dev.
+
+The license was chosen for this original Python code so the project can be
+used, modified, and redistributed with minimal friction. Third-party
+dependencies keep their own licenses; see their distributions for details.
