@@ -38,35 +38,36 @@ def test_plain_mode_renders_ascii_marks_borders_and_markers():
         width=80,
     )
 
-    renderer.banner(animate=True)
+    renderer.banner()
     renderer.panel("body", title="PANEL")
     renderer.print(renderer.table("TABLE", ["Column"]))
     renderer.error("something failed", hint="try again")
-    renderer.farewell(animate=True)
     renderer.rule("done")
 
     value = stream.getvalue()
     assert "\x1b" not in value
     assert value.isascii()
     assert "P H A N T O M" in value
-    assert "(  o o  )" in value
-    assert "(  - -  )" in value
+    assert "(  o o  )" not in value
     assert "PANEL" in value
     assert "done" in value
 
 
-def test_banner_uses_the_full_mark_only_when_styled_and_wide():
+def test_banner_is_a_bold_wordmark_with_no_face():
     wide = io.StringIO()
-    Renderer(file=wide, force_terminal=True, width=80).banner()
-    wide_text = sanitize_output(wide.getvalue())
-    assert "   |   o     o   |" in wide_text
-    assert "   |      ^      |" in wide_text
+    renderer = Renderer(file=wide, force_terminal=True, width=80)
+    renderer.banner()
+    wide_text = wide.getvalue()
+    assert renderer.console.get_style("phantom.wordmark").bold is True
+    assert "P H A N T O M" in sanitize_output(wide_text)
+    assert "o     o" not in sanitize_output(wide_text)
+    assert "local intelligence" in sanitize_output(wide_text)
 
     narrow = io.StringIO()
-    Renderer(file=narrow, force_terminal=True, width=18).banner()
+    Renderer(file=narrow, force_terminal=True, width=10).banner()
     narrow_text = sanitize_output(narrow.getvalue())
-    assert "(  o o  )" in narrow_text
-    assert "   |   o     o   |" not in narrow_text
+    assert "PHANTOM" in narrow_text
+    assert "P H A N T O M" not in narrow_text
     assert "local only" in narrow_text
     assert "local intelligence" not in narrow_text
 

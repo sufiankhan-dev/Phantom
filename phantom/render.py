@@ -7,13 +7,15 @@ so meaning survives a monochrome terminal.
 
 The visual language is intentionally small:
 
-* a centred ghost mark with the wordmark under it,
+* a centred bold wordmark with its tagline beneath it,
 * left aligned section rules instead of floating table titles,
 * quiet field grids for facts and bordered panels for speech,
 * one blank line between blocks, never two.
 
-Animation is deliberately quiet: a short line-by-line reveal of static ASCII
-art. It never stands in for work, never hides a result, and never claims that
+There are no faces or ASCII figures anywhere in the interface.
+
+Animation is deliberately quiet: a short line-by-line reveal of static text.
+It never stands in for work, never hides a result, and never claims that
 something happened before the corresponding real operation completed.
 """
 
@@ -32,23 +34,18 @@ from rich.text import Text
 from rich.theme import Theme
 
 from phantom.art import (
-    ART_WIDTH,
-    PHANTOM_ART,
-    PHANTOM_FAREWELL_ART,
-    PHANTOM_FAREWELL_SIGIL,
-    PHANTOM_SIGIL,
-    SIGIL_WIDTH,
     TAGLINE,
     TAGLINE_SHORT,
     TAGLINE_TINY,
     WORDMARK,
+    WORDMARK_COMPACT,
 )
 
 PHANTOM_THEME = Theme(
     {
         "phantom.title": "bold #c9c0e8",
         "phantom.heading": "bold #a99fd1",
-        "phantom.ghost": "#8f86b8",
+        "phantom.wordmark": "bold #e6e0ff",
         "phantom.body": "#d9d5e4",
         "phantom.muted": "dim #96a0a8",
         "phantom.key": "#9aa3b2",
@@ -70,9 +67,6 @@ _MARKERS: dict[str, tuple[str, str]] = {
 
 _ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
-_ART_DELAY = 0.03
-_SIGIL_DELAY = 0.05
 
 # A rule character that survives every encoding in plain mode.
 _RULE_PLAIN = "-"
@@ -109,18 +103,6 @@ def badge(text: str, style: str = "phantom.accent") -> Text:
     label = Text(sanitize_output(text), style=style)
     label.stylize("bold")
     return label
-
-
-def _art_line(line: str) -> Text:
-    """Style one ASCII art line, giving the eyes a small teal glint."""
-
-    row = Text(line, style="phantom.ghost")
-    for index, character in enumerate(line):
-        if character == "o":
-            row.stylize("bold phantom.accent", index, index + 1)
-        elif character == "^":
-            row.stylize("phantom.title", index, index + 1)
-    return row
 
 
 class Renderer:
@@ -449,36 +431,20 @@ class Renderer:
 
     # -- composed views -------------------------------------------------
 
-    def _mark(self, lines: Iterable[str], delay: float, animate: bool) -> None:
-        for line in lines:
-            self.console.print(_art_line(line))
-            if animate:
-                time.sleep(delay)
+    def banner(self) -> None:
+        """Print the bold PHANTOM wordmark and its tagline, centred.
 
-    def banner(self, *, animate: bool = False) -> None:
-        """Print the PHANTOM mark, centred on the console.
-
-        The full ghost is used on a styled terminal wide enough for it; a
-        compact sigil is used in plain mode, narrow terminals, and redirected
-        output so the mark never wraps into noise.
+        The wordmark is the whole mark: there is no figure around it. A
+        compact spelling is used on terminals too narrow for the spaced
+        letters, and the tagline shortens to whatever fits.
         """
 
-        animate = animate and self.styled
         width = self.console.width
-        if self.styled and width >= ART_WIDTH + 2:
-            self._mark(PHANTOM_ART, _ART_DELAY, animate)
-            self.console.print()
-        elif width >= SIGIL_WIDTH + 2:
-            self._mark(PHANTOM_SIGIL, _SIGIL_DELAY, animate)
-            self.console.print()
-
-        self.console.print(
-            Text(
-                WORDMARK if width >= len(WORDMARK) else "PHANTOM",
-                style="phantom.title",
-            ),
-            justify="center",
+        mark = Text(
+            WORDMARK if width >= len(WORDMARK) else WORDMARK_COMPACT,
+            style="phantom.wordmark",
         )
+        self.console.print(mark, justify="center")
         if width >= len(TAGLINE):
             tagline = TAGLINE
         elif width >= len(TAGLINE_SHORT):
@@ -486,33 +452,6 @@ class Renderer:
         else:
             tagline = TAGLINE_TINY
         self.console.print(Text(tagline, style="phantom.muted"), justify="center")
-        self._started = True
-
-    def sigil(self, *, farewell: bool = False, animate: bool = False) -> None:
-        """Print the compact three-line mark used inside a session."""
-
-        lines = PHANTOM_FAREWELL_SIGIL if farewell else PHANTOM_SIGIL
-        animate = animate and self.styled
-        self._space()
-        for line in lines:
-            self.console.print(_art_line(line))
-            if animate:
-                time.sleep(_SIGIL_DELAY)
-
-    def farewell(self, *, animate: bool = False) -> None:
-        """Print a slow, closed-eye mark for shutdown.
-
-        The full mark is used only where it fits and where styling is
-        available. Plain and redirected output gets the compact sigil.
-        """
-
-        if self.styled and self.console.width >= ART_WIDTH + 2:
-            self._space()
-            animate = animate and self.styled
-            self._mark(PHANTOM_FAREWELL_ART, _ART_DELAY, animate)
-        else:
-            self.sigil(farewell=True, animate=animate)
-        self.console.print()
         self._started = True
 
     def reveal(self, lines: Iterable[str], *, delay: float = 0.06) -> None:

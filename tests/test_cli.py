@@ -603,7 +603,7 @@ def test_awaken_initializes_storage_and_introduces_the_entity(tmp_path):
     assert result.code == 0
     assert (tmp_path / "phantom.db").exists()
     assert "P H A N T O M" in result.out
-    assert "(  o o  )" in result.out
+    assert "(  o o  )" not in result.out
     assert "TRANSMISSION" in result.out
     assert "[ok] qwen3:8b available" in result.out
     assert "Memories on record" in result.out
@@ -710,10 +710,11 @@ def test_exorcise_does_not_create_an_archive(tmp_path):
     assert not (tmp_path / "phantom.db").exists()
 
 
-def test_exorcise_shows_the_closed_mark_and_closes_cleanly(tmp_path):
+def test_exorcise_closes_cleanly_without_a_face(tmp_path):
     result = run_cli(["exorcise", "--plain"], tmp_path)
     assert result.code == 0
-    assert "(  - -  )" in result.out
+    assert "(  - -  )" not in result.out
+    assert "Nothing was deleted" in result.out
     assert "the cursor goes dark" in result.out
     assert "\x1b" not in result.out
 

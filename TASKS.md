@@ -4,18 +4,18 @@
 The short `phantom` command set is implemented and verified against real local
 `qwen3:8b` inference. The `core/` inference, memory, and personality modules are
 in place; `phantom/` provides the argparse CLI, Rich rendering, chat session,
-command handlers, the read-only `phantom/inspection.py` scanner, and the custom
-ASCII identity in `phantom/art.py`. Milestones M0-M9 are complete. The milestone
-checklists below are kept as the original plan; this status section and the
-verification log are the current truth.
+command handlers, the read-only `phantom/inspection.py` scanner, and the bold
+faceless wordmark in `phantom/art.py`. Milestones M0-M9 are complete. The
+milestone checklists below are kept as the original plan; this status section
+and the verification log are the current truth.
 
-**Implemented:** bare `phantom` (animated mark, real checks, introduction;
-same as `phantom awaken`), `phantom chat` (sigil, real streaming, measured token
-receipt, slash commands), `phantom inspect` (read-only scan, evidence report,
-optional local-model interpretation, configurable limits), `phantom remember`,
+**Implemented:** bare `phantom` (real checks, introduction; same as
+`phantom awaken`), `phantom chat` (real streaming, measured token receipt,
+slash commands), `phantom inspect` (read-only scan, evidence report, optional
+local-model interpretation, configurable limits), `phantom remember`,
 `phantom memories` (numbered list), `phantom forget` (list number, ID, or unique
-prefix), `phantom status`, `phantom exorcise` (closed-eye mark, real shutdown
-summary, final rule), and `phantom --help`; a `phantom` console script from
+prefix), `phantom status`, `phantom exorcise` (real shutdown summary, final
+rule), and `phantom --help`; a `phantom` console script from
 `pyproject.toml`; global options before or after the subcommand; plain mode;
 animation gating for non-TTY, `NO_COLOR`, and `TERM=dumb`; JSON status; typed
 exit codes; 186 passing tests plus 2 environment-skipped symlink tests.
@@ -80,7 +80,7 @@ phantom/
   chat.py          # ChatSession, bounded history, slash commands
   inspection.py    # safe scan, TODO extraction, grounded report
   render.py        # Rich theme, streaming renderer, animations, plain mode
-  art.py           # custom ASCII marks and the compact sigil
+  art.py           # bold wordmark and taglines, no figures
   commands/        # one small module per command
 
 docs/DEMO.md       # recording guide
@@ -164,13 +164,12 @@ when optional deps are missing.
 
 ### M6 — Terminal presentation and animations
 
-- [x] Rich theme with muted ash/violet/teal/ember colors, custom ghost ASCII art
-  (full mark plus compact sigil), and clear `[ok]`/`[!]`/`[x]`/`[i]` status
-  words that do not depend on color.
+- [x] Rich theme with muted ash/violet/teal/ember colors, a bold faceless
+  wordmark, and clear `[ok]`/`[!]`/`[x]`/`[i]` status words that do not depend
+  on color.
 - [x] `awaken` startup sequence with a short optional reveal; `chat` streaming
-  renderer with a compact opening mark and real measured receipt; `inspect`
-  tree/table/panel report; `memories` table; `status` table; `exorcise`
-  closed-eye shutdown mark and real summary.
+  renderer with a real measured receipt; `inspect` tree/table/panel report;
+  `memories` table; `status` table; `exorcise` quiet shutdown and real summary.
 - [x] Streaming: direct chunk rendering as the model delivers it, with
   sanitization, a styled body, and no artificial typing delay. Metrics are
   shown only when Ollama reports them.

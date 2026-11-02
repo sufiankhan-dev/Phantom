@@ -34,7 +34,7 @@ NEXT_STEPS: tuple[tuple[str, str], ...] = (
 def run(ctx: CommandContext, args: Any) -> int:
     renderer = ctx.renderer
     settings = ctx.settings
-    renderer.banner(animate=settings.animation)
+    renderer.banner()
 
     checks: list[tuple[str, Any]] = []
     checks.append(

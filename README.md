@@ -12,16 +12,6 @@ Everything PHANTOM shows you — status, checks, findings, token counts — come
 from a real local operation. Nothing is faked for atmosphere.
 
 ```text
-       .-"""-.
-     .'       '.
-    /           \
-   |   o     o   |
-   |      ^      |
-   |    .---.    |
-    \  '-----'  /
-     '.       .'
-       '-...-'
-
               P H A N T O M
    local intelligence / no cloud / no leash
 

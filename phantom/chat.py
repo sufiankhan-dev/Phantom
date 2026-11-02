@@ -67,7 +67,6 @@ class ChatSession:
         """Run the read/stream loop until the user leaves."""
 
         self._record(MoodEvent.SESSION_START)
-        self.renderer.sigil(animate=self.settings.animation)
         self.renderer.panel(
             Text.assemble(
                 ("The cursor waits.\n\n", "phantom.title"),
