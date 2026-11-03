@@ -215,10 +215,6 @@ Exit codes: `0` success, `2` invalid input, `3` model or Ollama unavailable,
 - The model's interpretation is a hypothesis. The scanner report is the
   evidence.
 - Conversation history is intentionally not persisted.
-- No schema migration path yet; a database from a newer version is refused
-  rather than modified.
-- Only Python 3.14.3 on Windows was exercised for this submission, though the
-  code targets 3.11+.
 
 ## License
 
