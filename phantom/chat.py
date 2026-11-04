@@ -31,6 +31,7 @@ _HELP_ROWS: tuple[tuple[str, str], ...] = (
     ("/help", "Show this list."),
     ("/remember TEXT", "Archive an explicit memory."),
     ("/memories", "List archived memories."),
+    ("/search QUERY", "Find stored memories by keyword."),
     ("/forget ID", "Delete one memory after confirmation."),
     ("/status", "Check the model and the archive."),
     ("/mood", "Show PHANTOM's recorded internal state."),
@@ -232,6 +233,8 @@ class ChatSession:
             self._remember(argument)
         elif command == "memories":
             self._show_memories()
+        elif command == "search":
+            self._search(argument)
         elif command == "forget":
             self._forget(argument)
         elif command == "status":
@@ -287,6 +290,27 @@ class ChatSession:
             return
         self.renderer.section("Memory archive", detail="newest first")
         self.renderer.print(memory_table(self.renderer, records))
+
+    def _search(self, argument: str) -> None:
+        if not argument:
+            self.renderer.warning("Usage: /search QUERY")
+            return
+        try:
+            records = self.store.search_memories(argument)
+        except PhantomMemoryError as exc:
+            self.renderer.error(str(exc))
+            return
+        if not records:
+            self.renderer.note(
+                f'No stored memory matched "{argument}". No model was contacted.'
+            )
+            return
+        self.renderer.section(
+            "Memory search",
+            detail=f'"{argument}" - deterministic keyword match',
+        )
+        self.renderer.print(memory_table(self.renderer, records))
+        self.renderer.note(f"{len(records)} match(es). No model was contacted.")
 
     def _forget(self, argument: str) -> None:
         if not argument:

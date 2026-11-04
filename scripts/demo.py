@@ -131,11 +131,14 @@ def main(argv: list[str] | None = None) -> int:
         _step("3. Reading the archive in a new process (persistence)")
         _run([*common, "memories"])
 
+        _step("4. Deterministic memory search (no model call)")
+        _run([*common, "search", "pytest"])
+
         if options.no_chat:
-            _step("4. Chat skipped (--no-chat)")
-            print("The chat step is the only step that spends model time.")
+            _step("5. Model turns skipped (--no-chat)")
+            print("The chat and ask steps are the only ones that spend model time.")
         else:
-            _step("4. A useful streamed interaction")
+            _step("5. A useful streamed interaction")
             prompt = (
                 "In one sentence, explain what a TODO comment is and why a "
                 "small, specific one is easier to act on.\n/exit\n"
@@ -146,16 +149,28 @@ def main(argv: list[str] | None = None) -> int:
                 allowed=(0, 3),
             )
 
-        _step("5. Read-only project inspection")
+            _step("6. One-shot grounded question over the sample project")
+            _run(
+                [
+                    *common,
+                    "ask",
+                    "What is unfinished in this project? Answer briefly.",
+                    "--context",
+                    str(project),
+                ],
+                allowed=(0, 3),
+            )
+
+        _step("7. Read-only project inspection")
         _run([*common, "inspect", str(project), "--no-ai"])
 
-        _step("6. Real status checks")
+        _step("8. Real status checks")
         _run([*common, "status"], allowed=(0, 3))
 
-        _step("7. Atmospheric shutdown (deletes nothing)")
+        _step("9. Atmospheric shutdown (deletes nothing)")
         _run([*common, "exorcise"])
 
-        _step("8. The memory survived the shutdown")
+        _step("10. The memory survived the shutdown")
         _run([*common, "memories"])
 
     print("\nDemo complete. No real archive or project was touched.")

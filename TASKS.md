@@ -1,24 +1,30 @@
 # PHANTOM — Implementation Tasks
 
-**Status:** Ready for demo recording and challenge submission (2026-10-30).
-The short `phantom` command set is implemented and verified against real local
-`qwen3:8b` inference. The `core/` inference, memory, and personality modules are
-in place; `phantom/` provides the argparse CLI, Rich rendering, chat session,
-command handlers, the read-only `phantom/inspection.py` scanner, and the bold
-faceless wordmark in `phantom/art.py`. Milestones M0-M9 are complete. The
-milestone checklists below are kept as the original plan; this status section
-and the verification log are the current truth.
+**Status:** Ready for demo recording and challenge submission (2026-10-30),
+then extended on 2026-11-04 with `ask`, `search`, `inspect --json`, dependency
+facts, and in-chat search. The short `phantom` command set is implemented and
+verified against real local `qwen3:8b` inference. The `core/` inference, memory,
+and personality modules are in place; `phantom/` provides the argparse CLI, Rich
+rendering, chat session, command handlers, the read-only
+`phantom/inspection.py` scanner, and the bold faceless wordmark in
+`phantom/art.py`. Milestones M0-M7, M9, and M10 are complete; the M8 recording
+and submission steps remain. The milestone checklists below are kept as the
+original plan; this status section and the verification log are the current
+truth.
 
 **Implemented:** bare `phantom` (real checks, introduction; same as
 `phantom awaken`), `phantom chat` (real streaming, measured token receipt,
-slash commands), `phantom inspect` (read-only scan, evidence report, optional
-local-model interpretation, configurable limits), `phantom remember`,
-`phantom memories` (numbered list), `phantom forget` (list number, ID, or unique
-prefix), `phantom status`, `phantom exorcise` (real shutdown summary, final
-rule), and `phantom --help`; a `phantom` console script from
-`pyproject.toml`; global options before or after the subcommand; plain mode;
-animation gating for non-TTY, `NO_COLOR`, and `TERM=dumb`; JSON status; typed
-exit codes; 186 passing tests plus 2 environment-skipped symlink tests.
+slash commands including `/search`), `phantom ask TEXT` (one streamed answer,
+automatic memory recall, optional `--context PATH` read-only grounding, `--json`),
+`phantom inspect` (read-only scan, evidence report, optional local-model
+interpretation, configurable limits, `--json`), `phantom remember`,
+`phantom memories` (numbered list), `phantom search QUERY` (deterministic
+keyword search, `--json`), `phantom forget` (list number, ID, or unique prefix),
+`phantom status`, `phantom exorcise` (real shutdown summary, final rule), and
+`phantom --help`; a `phantom` console script from `pyproject.toml`; global
+options before or after the subcommand; plain mode; animation gating for
+non-TTY, `NO_COLOR`, and `TERM=dumb`; JSON status; typed exit codes; 200 passing
+tests plus 2 environment-skipped symlink tests.
 
 **Default model:** `qwen3:8b` everywhere (`core/brain.py`, CLI help, tests, and
 docs). It is used directly through the Ollama Python library. PHANTOM never
@@ -229,6 +235,26 @@ when optional deps are missing.
   script runs every documented short command; the test suite passes; no working
   behavior is removed.
 
+### M10 — Enhanced one-shot, search, and machine-readable paths
+
+- [x] `phantom ask TEXT`: one streamed answer and exit; automatic deterministic
+  memory recall; measured metrics only when reported; no transcript persistence.
+- [x] `phantom ask TEXT --context PATH`: reuse the read-only scanner, build a
+  delimited grounded prompt, and validate every model `path:line` citation.
+- [x] `phantom ask --json`: one object with question, answer, grounding,
+  memories used, metrics, and unsupported citations.
+- [x] `phantom search QUERY`: deterministic keyword search with `--limit` and
+  `--json`; no model call and no embeddings.
+- [x] `phantom inspect --json`: verified evidence (files, markers, skips,
+  observations, optional analysis) without file excerpt bodies.
+- [x] `inspect` reports total lines, the largest text file, and declared
+  dependency counts for pyproject, package.json, Cargo, and requirements files.
+- [x] Chat `/search QUERY` mirrors the CLI search without leaving the session.
+- [x] Help, README, demo guide, automated demo, and tests updated together.
+- **Acceptance:** 200 tests pass; live `ask` recalled a stored preference and
+  streamed a grounded answer; `inspect --json` parses cleanly; existing
+  commands and safety rules are unchanged.
+
 ## Verification log (2026-10-30)
 
 | Command | Observed result |
@@ -256,6 +282,18 @@ when optional deps are missing.
 | `phantom summon` | exit 2, invalid command |
 | `scripts/demo.py --no-chat` | all steps completed, no real archive or project touched |
 | `scripts/demo.py` | exit 0; full run including a live 41-token chat turn |
+
+## Verification log (2026-11-04, enhancements)
+
+| Command | Observed result |
+| --- | --- |
+| `python -m pytest -q` | 200 passed, 2 skipped (symlink privilege) |
+| `phantom search pytest` | exit 0, only the matching memory shown, no model contacted |
+| `phantom search kubernetes` | exit 0, clear no-match panel, archive unchanged |
+| `phantom inspect . --json --no-ai --max-files 5` | exit 0, valid JSON, no progress text on stdout |
+| `phantom ask "Which test runner do I prefer?"` | exit 0, live stream, recalled the stored pytest memory, 5 tokens at 6.7 tok/s |
+| `phantom ask ... --context <temp-project>` | exit 0, grounded prompt, streamed answer, measured 59 tokens at 4.6 tok/s |
+| `phantom --help` | lists `ask` and `search` alongside the original commands |
 
 ## Cross-cutting acceptance criteria
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from core.memory import PhantomMemoryError
@@ -18,6 +19,7 @@ from phantom.inspection import (
     InspectionReport,
     analyze_report,
     inspect_path,
+    report_to_dict,
     resolve_inspection_root,
 )
 from phantom.render import sanitize_output
@@ -37,6 +39,9 @@ def run(ctx: CommandContext, args: Any) -> int:
         )
     except ValueError as exc:
         raise UsageError(str(exc)) from exc
+
+    if getattr(args, "json", False):
+        return _run_json(ctx, args, limits)
 
     with renderer.progress("Resolving the requested path"):
         root = resolve_inspection_root(args.path)
@@ -66,11 +71,51 @@ def run(ctx: CommandContext, args: Any) -> int:
     return 0
 
 
-def _record_inspection_mood(ctx: CommandContext, report: InspectionReport) -> None:
+def _run_json(
+    ctx: CommandContext,
+    args: Any,
+    limits: InspectionLimits,
+) -> int:
+    """Emit the verified scanner report as one JSON document."""
+
+    root = resolve_inspection_root(args.path)
+    report = inspect_path(root, limits=limits)
+
+    analysis = None
+    if not getattr(args, "no_ai", False):
+        brain = ctx.make_brain()
+        try:
+            analysis = analyze_report(brain, report)
+        finally:
+            brain.close()
+
+    payload = report_to_dict(report)
+    payload["analysis"] = (
+        None
+        if analysis is None
+        else {
+            "text": analysis.text,
+            "error": analysis.error,
+            "truncated": analysis.truncated,
+            "unsupported_citations": list(analysis.unsupported_citations),
+        }
+    )
+    ctx.renderer.write_raw(json.dumps(payload, indent=2, ensure_ascii=False))
+    _record_inspection_mood(ctx, report, quiet=True)
+    return 0
+
+
+def _record_inspection_mood(
+    ctx: CommandContext,
+    report: InspectionReport,
+    *,
+    quiet: bool = False,
+) -> None:
     """Record a real inspection event without making the report fail.
 
     The archive is auxiliary here: a broken or read-only database must not turn
-    a completed read-only inspection into an error.
+    a completed read-only inspection into an error. ``quiet`` keeps stdout clean
+    for machine-readable output.
     """
 
     try:
@@ -87,10 +132,11 @@ def _record_inspection_mood(ctx: CommandContext, report: InspectionReport) -> No
                 event,
                 files=len(report.files),
                 todos=len(report.todos),
-                renderer=ctx.renderer,
+                renderer=None if quiet else ctx.renderer,
             )
     except PhantomMemoryError as exc:
-        ctx.renderer.warning(
-            f"Inspection mood was not recorded: {exc}",
-            title="Archive unchanged",
-        )
+        if not quiet:
+            ctx.renderer.warning(
+                f"Inspection mood was not recorded: {exc}",
+                title="Archive unchanged",
+            )

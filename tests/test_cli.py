@@ -22,9 +22,11 @@ from phantom.cli import build_parser, main
 COMMANDS = (
     "awaken",
     "chat",
+    "ask",
     "inspect",
     "remember",
     "memories",
+    "search",
     "forget",
     "status",
     "exorcise",
@@ -243,6 +245,10 @@ def test_parser_accepts_every_command():
         argv = [command]
         if command == "inspect":
             argv.append(".")
+        elif command == "ask":
+            argv.append("hello")
+        elif command == "search":
+            argv.append("pytest")
         elif command == "remember":
             argv.append("text")
         elif command == "forget":
@@ -439,6 +445,171 @@ def test_remember_does_not_overwrite_a_corrupt_mood_record(tmp_path):
     connection.close()
     assert row is not None
     assert row[0] == "not json"
+
+
+# -- ask / search -----------------------------------------------------
+
+
+def test_ask_streams_an_answer_and_recalls_relevant_memories(tmp_path):
+    seed_memory(tmp_path, "I prefer pytest and short answers.")
+    brain = FakeBrain(chunks=(StreamChunk("Use "), StreamChunk("pytest.")))
+
+    result = run_cli(
+        ["ask", "Which", "test", "runner", "should", "I", "use?", "--plain"],
+        tmp_path,
+        brain=brain,
+    )
+
+    assert result.code == 0
+    assert "phantom> Use pytest." in result.out
+    assert brain.calls[0]["messages"] == [
+        {"role": "user", "content": "Which test runner should I use?"}
+    ]
+    assert "I prefer pytest and short answers." in brain.calls[0]["system"]
+    assert "USER-SUPPLIED" in brain.calls[0]["system"]
+    # A completed turn updates mood but stores no transcript.
+    assert len(read_memories(tmp_path)) == 1
+    mood = read_mood(tmp_path)
+    assert mood is not None
+    assert "conversation turn" in mood["evidence"]
+
+
+def test_ask_grounds_the_question_in_a_read_only_scan(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "main.py").write_text(
+        "def main():\n    # TODO: finish this\n    return 0\n",
+        encoding="utf-8",
+    )
+    brain = FakeBrain(chunks=(StreamChunk("From the scan: one TODO."),))
+
+    result = run_cli(
+        ["ask", "what", "is", "unfinished?", "--context", str(project), "--plain"],
+        tmp_path,
+        brain=brain,
+    )
+
+    assert result.code == 0
+    assert "From the scan: one TODO." in result.out
+    assert "Grounding the answer in directory" in result.out
+    prompt = brain.calls[0]["messages"][0]["content"]
+    assert "QUESTION" in prompt
+    assert "what is unfinished?" in prompt
+    assert "TODO: finish this" in prompt
+    assert "<<<UNTRUSTED_FILE" in prompt
+    assert "read-only scan" in brain.calls[0]["system"]
+
+
+def test_ask_reports_unsupported_citations(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    brain = FakeBrain(chunks=(StreamChunk("See missing.py:99."),))
+
+    result = run_cli(
+        ["ask", "where?", "--context", str(project), "--plain"],
+        tmp_path,
+        brain=brain,
+    )
+
+    assert result.code == 0
+    assert "Unsupported model citations" in result.out
+    assert "missing.py:99" in result.out
+
+
+def test_ask_json_is_machine_readable(tmp_path):
+    seed_memory(tmp_path, "I prefer pytest.")
+    brain = FakeBrain(completion_text="Use pytest.")
+
+    result = run_cli(["ask", "which", "test", "runner?", "--json"], tmp_path, brain=brain)
+
+    assert result.code == 0
+    payload = json.loads(result.out)
+    assert payload["question"] == "which test runner?"
+    assert payload["answer"] == "Use pytest."
+    assert payload["grounding"] is None
+    assert payload["memories_used"]
+    assert payload["metrics"]["eval_count"] is None
+    assert result.err == ""
+
+
+def test_ask_with_context_json_includes_grounding(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    brain = FakeBrain(completion_text="It prints ok.")
+
+    result = run_cli(
+        ["ask", "what does it do?", "--context", str(project), "--json"],
+        tmp_path,
+        brain=brain,
+    )
+
+    assert result.code == 0
+    payload = json.loads(result.out)
+    assert payload["grounding"]["root_kind"] == "directory"
+    assert payload["answer"] == "It prints ok."
+    assert payload["unsupported_citations"] == []
+
+
+def test_ask_model_failure_exits_three(tmp_path):
+    brain = FakeBrain(stream_error=OllamaUnavailableError("Cannot reach Ollama."))
+    result = run_cli(["ask", "hello", "--plain"], tmp_path, brain=brain)
+    assert result.code == 3
+    assert "Cannot reach Ollama" in result.err
+
+
+def test_search_returns_only_matching_memories(tmp_path):
+    pytest_memory = seed_memory(tmp_path, "I prefer pytest.")
+    seed_memory(tmp_path, "My editor is Neovim.")
+
+    result = run_cli(["search", "pytest", "--plain"], tmp_path)
+
+    assert result.code == 0
+    assert "Memory search" in result.out
+    assert pytest_memory.short_id in result.out
+    assert "I prefer pytest." in result.out
+    assert "Neovim" not in result.out
+    assert "No model was contacted." in result.out
+
+
+def test_search_handles_no_matches_and_json(tmp_path):
+    seed_memory(tmp_path, "I prefer pytest.")
+    empty = run_cli(["search", "kubernetes", "--plain"], tmp_path)
+    assert empty.code == 0
+    assert "No stored memory matched" in empty.out
+
+    result = run_cli(["search", "pytest", "--json"], tmp_path)
+    assert result.code == 0
+    payload = json.loads(result.out)
+    assert payload["query"] == "pytest"
+    assert payload["total_memories"] == 1
+    assert payload["results"][0]["content"] == "I prefer pytest."
+
+
+def test_inspect_json_returns_verified_evidence_without_excerpts(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "README.md").write_text("# Demo\n", encoding="utf-8")
+    (project / "main.py").write_text(
+        "def main():\n    # TODO: finish\n    return 0\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        ["inspect", str(project), "--json", "--no-ai"],
+        tmp_path,
+    )
+
+    assert result.code == 0
+    payload = json.loads(result.out)
+    assert payload["root_kind"] == "directory"
+    assert payload["readme_path"] == "README.md"
+    assert [item["path"] for item in payload["files"]] == ["README.md", "main.py"]
+    assert payload["todos"][0]["path"] == "main.py"
+    assert payload["todos"][0]["line"] == 2
+    assert payload["analysis"] is None
+    assert all("excerpt" not in item for item in payload["files"])
 
 
 # -- forget -----------------------------------------------------------
@@ -914,6 +1085,25 @@ def test_chat_slash_commands_manage_memories(tmp_path):
     assert "Internal state" in result.out
     records = read_memories(tmp_path)
     assert [record.content for record in records] == ["I like tea."]
+
+
+def test_chat_slash_search_finds_stored_memories(tmp_path):
+    record = seed_memory(tmp_path, "I prefer pytest.")
+    seed_memory(tmp_path, "My editor is Neovim.")
+    brain = FakeBrain()
+
+    result = run_cli(
+        ["chat", "--plain"],
+        tmp_path,
+        brain=brain,
+        input_lines=["/search pytest", "/exit"],
+    )
+
+    assert result.code == 0
+    assert "Memory search" in result.out
+    assert record.short_id in result.out
+    assert "I prefer pytest." in result.out
+    assert "Neovim" not in result.out
 
 
 def test_chat_slash_forget_requires_confirmation(tmp_path):

@@ -24,7 +24,10 @@ phantom> ...
 | You want to | Use |
 | --- | --- |
 | Talk to a local model | `phantom chat` |
+| Get one answer, then leave | `phantom ask "…"` |
+| Ground an answer in a project | `phantom ask "…" --context PATH` |
 | Save a fact across sessions | `phantom remember "…"` |
+| Find a stored fact | `phantom search QUERY` |
 | Understand a codebase, read-only | `phantom inspect PATH` |
 | Check that everything works | `phantom status` |
 | Leave without deleting anything | `phantom exorcise` |
@@ -70,9 +73,12 @@ to run and stops.
 | --- | --- |
 | `phantom` | Awakens PHANTOM: checks dependencies, opens the archive, introduces itself |
 | `phantom chat` | Interactive conversation, streamed from the local model |
+| `phantom ask "TEXT"` | One streamed answer, then exit; relevant memories are recalled |
+| `phantom ask "TEXT" --context PATH` | The same, grounded in a read-only project scan |
 | `phantom inspect PATH` | Read-only inspection of a file or directory |
 | `phantom remember "TEXT"` | Saves one explicit memory |
 | `phantom memories` | Lists memories with numbers, IDs, and timestamps |
+| `phantom search QUERY` | Finds stored memories by deterministic keyword match |
 | `phantom forget ID` | Deletes one memory, after confirmation |
 | `phantom status` | Reports model, Ollama, database health, and memory count |
 | `phantom exorcise` | Atmospheric shutdown that deletes nothing |
@@ -96,6 +102,7 @@ only when Ollama reports them.
 | `/help` | Show the command list |
 | `/remember TEXT` | Save a memory without leaving the session |
 | `/memories` | List saved memories |
+| `/search QUERY` | Find saved memories by deterministic keyword match |
 | `/forget ID` | Delete one memory after confirmation |
 | `/status` / `/mood` | Show model and archive state / current mood and its evidence |
 | `/clear` | Drop this session's conversation from memory |
@@ -104,18 +111,59 @@ only when Ollama reports them.
 `Ctrl+C` during a reply cancels that answer without saving it. `Ctrl+C` at the
 prompt, or end-of-input, closes cleanly.
 
+### Ask
+
+```bash
+phantom ask "Which test runner should I use?"
+phantom ask "What is unfinished?" --context .
+cat question.txt | phantom ask -
+phantom ask "Summarize the TODOs" --context src --json
+```
+
+`ask` is the one-shot sibling of `chat`: it streams one answer and exits
+without keeping a transcript. Relevant user-supplied memories are recalled
+automatically, exactly as in `chat`.
+
+With `--context PATH`, PHANTOM performs the same read-only scan as
+`phantom inspect` and answers only from the scanner's verified facts and
+bounded file excerpts. The prompt marks those excerpts as untrusted data, and
+every `path:line` citation the model produces is checked against files the
+scanner actually read. Unsupported citations are reported, never trusted.
+
+`--json` prints one object with the question, answer, grounding metadata,
+memories used, measured metrics, and any unsupported citations. Nothing is
+written to the archive except the mood event for a completed turn.
+
+### Search
+
+```bash
+phantom search pytest
+phantom search "test framework" --limit 3
+phantom search pytest --json
+```
+
+Search uses deterministic keyword overlap over stored memories and breaks ties
+by recency. It contacts no model, builds no embeddings, and modifies nothing.
+The same ranking powers automatic recall in `chat` and `ask`.
+
 ### Inspect
 
 ```bash
 phantom inspect .                    # report plus model interpretation
 phantom inspect src --no-ai          # deterministic report only
+phantom inspect . --json --no-ai     # machine-readable verified report
 phantom inspect . --max-files 50
 ```
 
-The scanner reports only what it can prove: files read, README presence, project
-metadata, likely entry points and tests, extension counts, and
+The scanner reports only what it can prove: files read, total lines, the
+largest text file, README presence, project metadata (including declared
+dependency counts), likely entry points and tests, extension counts, and
 `TODO`/`FIXME`/`HACK`/`XXX`/`BUG` markers with `path:line` locations. A separate
 panel holds the model's interpretation, clearly labelled as generated.
+
+`--json` emits the same evidence as one object for scripts and CI. It contains
+file metadata, markers, skipped entries, observations, and the optional model
+analysis — never file excerpt bodies.
 
 Safety rules:
 
@@ -201,7 +249,7 @@ python scripts/demo.py --no-chat    # fast smoke demo against a temp archive
 Ollama is mocked in CLI tests, so no model, network, or real archive is needed.
 Tests use temporary directories and never touch `~/.phantom` or a real project.
 
-Last run on Windows with Python 3.14.3: **186 passed, 2 skipped** (the skips need
+Last run on Windows with Python 3.14.3: **200 passed, 2 skipped** (the skips need
 symlink privileges that the environment did not grant).
 
 Exit codes: `0` success, `2` invalid input, `3` model or Ollama unavailable,

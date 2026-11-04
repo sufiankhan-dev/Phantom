@@ -82,39 +82,64 @@ phantom memories --db .phantom-demo.db
 
 The memory ID, local timestamp, `user` origin, and text are still present.
 
-**4. Read-only inspection.** Inspecting the repository itself is honest and
+**4. Deterministic search.** No model is contacted, so this is instant and
+shows the same ranking that automatic recall uses.
+
+```bash
+phantom search pytest --db .phantom-demo.db
+```
+
+**5. One-shot grounded question.** `ask` streams one answer and exits. With
+`--context` it uses the same read-only scan as `inspect`.
+
+```bash
+phantom ask "What is unfinished in this project? Answer briefly." --context . --db .phantom-demo.db
+```
+
+Point out the streamed answer, the `Grounding the answer in ...` line, and the
+measured receipt. If the model invents a citation, PHANTOM lists it as
+unsupported instead of trusting it.
+
+**6. Read-only inspection.** Inspecting the repository itself is honest and
 needs no generated fixture.
 
 ```bash
 phantom inspect . --db .phantom-demo.db --no-ai
 ```
 
-Show the confirmed file count, the root `pyproject.toml` metadata, likely entry
-points, tests, and any `TODO` locations. `--no-ai` keeps the demo fast and makes
-the deterministic evidence easy to see. To show the local-model interpretation,
-run the same command without `--no-ai`; it is placed in a separate
+Show the confirmed file count, total lines, largest file, root
+`pyproject.toml` metadata and dependency counts, likely entry points, tests,
+and any `TODO` locations. `--no-ai` keeps the demo fast and makes the
+deterministic evidence easy to see. To show the local-model interpretation, run
+the same command without `--no-ai`; it is placed in a separate
 `INTERPRETATION (model-generated)` panel and every citation is checked.
 
-**5. Status.** Show the model, archive health, schema version, memory count, and
+For scripts and CI, the same evidence is available without prose:
+
+```bash
+phantom inspect . --json --no-ai --db .phantom-demo.db
+```
+
+**7. Status.** Show the model, archive health, schema version, memory count, and
 mood.
 
 ```bash
 phantom status --db .phantom-demo.db
 ```
 
-**6. Shutdown.** Show the closed-eye mark and the real summary.
+**8. Shutdown.** Show the closed-eye mark and the real summary.
 
 ```bash
 phantom exorcise --db .phantom-demo.db
 ```
 
-**7. Proof that shutdown deleted nothing.**
+**9. Proof that shutdown deleted nothing.**
 
 ```bash
 phantom memories --db .phantom-demo.db
 ```
 
-**8. Plain fallback.** Show that the same facts work without colour or
+**10. Plain fallback.** Show that the same facts work without colour or
 animation.
 
 ```bash

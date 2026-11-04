@@ -46,10 +46,12 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 _COMMAND_MODULES = {
     "awaken": "phantom.commands.awaken",
+    "ask": "phantom.commands.ask",
     "chat": "phantom.commands.chat",
     "inspect": "phantom.commands.inspect",
     "remember": "phantom.commands.remember",
     "memories": "phantom.commands.memories",
+    "search": "phantom.commands.search",
     "forget": "phantom.commands.forget",
     "status": "phantom.commands.status",
     "exorcise": "phantom.commands.exorcise",
@@ -197,6 +199,44 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="example:\n  phantom chat",
     )
 
+    ask = subparsers.add_parser(
+        "ask",
+        parents=[common],
+        help=_COMMAND_SUMMARIES["ask TEXT"],
+        description=(
+            "Ask one question and stream the local model's answer, then exit. "
+            "Relevant user-supplied memories are recalled automatically. With "
+            "--context PATH the answer is grounded in the same read-only scan "
+            "used by `phantom inspect`, and any path:line citation the model "
+            "invents is reported. No conversation is persisted."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            '  phantom ask "what should I fix first?"\n'
+            '  phantom ask "explain the module layout" --context .\n'
+            '  cat question.txt | phantom ask -\n'
+            '  phantom ask "summarize the TODOs" --context src --json'
+        ),
+    )
+    ask.add_argument(
+        "text",
+        nargs="+",
+        metavar="TEXT",
+        help="Question text, or - to read it from standard input.",
+    )
+    ask.add_argument(
+        "--context",
+        metavar="PATH",
+        default=None,
+        help="Ground the answer in a read-only scan of this file or directory.",
+    )
+    ask.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit one JSON object instead of streaming formatted output.",
+    )
+
     inspect = subparsers.add_parser(
         "inspect",
         parents=[common],
@@ -227,6 +267,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-ai",
         action="store_true",
         help="Print only the deterministic scanner report; do not call the model.",
+    )
+    inspect.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the verified scanner report as machine-readable JSON.",
     )
     inspect.add_argument(
         "--max-file-bytes",
@@ -285,6 +330,43 @@ def build_parser() -> argparse.ArgumentParser:
         type=_positive_int,
         default=None,
         help="Show at most N memories.",
+    )
+
+    search = subparsers.add_parser(
+        "search",
+        parents=[common],
+        help=_COMMAND_SUMMARIES["search QUERY"],
+        description=(
+            "Search stored memories with deterministic keyword overlap. No "
+            "model is contacted, no embeddings are built, and the archive is "
+            "not modified. Ties are broken by recency."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            '  phantom search pytest\n'
+            '  phantom search "test framework" --limit 3\n'
+            '  phantom search pytest --json'
+        ),
+    )
+    search.add_argument(
+        "query",
+        nargs="+",
+        metavar="QUERY",
+        help="Words to match against stored memories.",
+    )
+    search.add_argument(
+        "--limit",
+        "-n",
+        metavar="N",
+        type=_positive_int,
+        default=None,
+        help="Return at most N matches (default: 5).",
+    )
+    search.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit matches as machine-readable JSON.",
     )
 
     forget = subparsers.add_parser(
