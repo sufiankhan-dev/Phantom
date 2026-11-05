@@ -48,6 +48,7 @@ def run(ctx: CommandContext, args: Any) -> int:
                 "ok": health.ok,
                 "schema_version": health.schema_version,
                 "memories": health.memory_count,
+                "tags": health.tag_count,
                 "interpretations": health.interpretation_count,
                 "error": health.error,
             },

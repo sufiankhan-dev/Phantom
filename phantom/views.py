@@ -11,7 +11,7 @@ from core.personality import MoodState, format_mood
 
 from phantom.config import Settings
 from phantom.inspection import InspectionReport, ModelAnalysis
-from phantom.render import Renderer, badge, sanitize_output, status_text
+from phantom.render import Renderer, sanitize_output, status_text
 from rich.table import Table
 from rich.text import Text
 
@@ -61,24 +61,34 @@ def memory_table(
 
     table = renderer.table(
         title,
-        ["#", "ID", "Origin", "Recorded", "Memory"],
+        ["#", "ID", "Tags", "Recorded", "Memory"],
     )
     table.columns[0].justify = "right"
     table.columns[1].no_wrap = True
     table.columns[2].no_wrap = True
     table.columns[3].no_wrap = True
     for position, record in enumerate(records, start=1):
-        origin_style = (
-            "phantom.accent" if record.origin == "user" else "phantom.warn"
-        )
         table.add_row(
             Text(str(position), style="phantom.muted"),
             Text(record.short_id, style="phantom.accent"),
-            badge(record.origin, origin_style),
+            _tag_cell(record.tags),
             Text(format_timestamp(record.created_at), style="phantom.muted"),
             _plain(record.content),
         )
     return table
+
+
+def _tag_cell(tags: Sequence[str]) -> Text:
+    """Render a memory's tags as ``#tag`` labels, or a quiet dash."""
+
+    if not tags:
+        return Text("-", style="phantom.muted")
+    cell = Text()
+    for index, tag in enumerate(tags):
+        if index:
+            cell.append(" ")
+        cell.append(f"#{sanitize_output(tag)}", style="phantom.accent")
+    return cell
 
 
 def render_status(
@@ -196,6 +206,7 @@ def render_status(
             str(health.schema_version) if health.schema_version is not None else "unknown",
         ),
         ("Memories", str(health.memory_count)),
+        ("Tags", str(health.tag_count)),
         ("Interpretations", str(health.interpretation_count)),
         ("Path", health.path),
     ]

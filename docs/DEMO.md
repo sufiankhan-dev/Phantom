@@ -60,7 +60,7 @@ phantom --db .phantom-demo.db
 supplied and will be retrieved for a relevant question.
 
 ```bash
-phantom remember "I prefer pytest and short, evidence-based answers." --db .phantom-demo.db
+phantom remember "I prefer pytest and short, evidence-based answers." --tag preferences,python --db .phantom-demo.db
 phantom chat --db .phantom-demo.db
 ```
 
@@ -78,15 +78,19 @@ metric is absent, PHANTOM does not invent one.
 
 ```bash
 phantom memories --db .phantom-demo.db
+phantom memories --tag preferences --db .phantom-demo.db
 ```
 
-The memory ID, local timestamp, `user` origin, and text are still present.
+The memory ID, local timestamp, `user` origin, tags, and text are still present.
+The second command shows the same archive narrowed to one tag.
 
 **4. Deterministic search.** No model is contacted, so this is instant and
-shows the same ranking that automatic recall uses.
+shows the same ranking that automatic recall uses. `phantom tags` shows the
+vocabulary; `--tag` narrows the search.
 
 ```bash
-phantom search pytest --db .phantom-demo.db
+phantom tags --db .phantom-demo.db
+phantom search pytest --tag preferences --db .phantom-demo.db
 ```
 
 **5. One-shot grounded question.** `ask` streams one answer and exits. With

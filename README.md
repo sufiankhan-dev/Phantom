@@ -27,6 +27,7 @@ phantom> ...
 | Get one answer, then leave | `phantom ask "…"` |
 | Ground an answer in a project | `phantom ask "…" --context PATH` |
 | Save a fact across sessions | `phantom remember "…"` |
+| Organize facts by topic | `phantom tag ID TAG` |
 | Find a stored fact | `phantom search QUERY` |
 | Understand a codebase, read-only | `phantom inspect PATH` |
 | Check that everything works | `phantom status` |
@@ -76,9 +77,11 @@ to run and stops.
 | `phantom ask "TEXT"` | One streamed answer, then exit; relevant memories are recalled |
 | `phantom ask "TEXT" --context PATH` | The same, grounded in a read-only project scan |
 | `phantom inspect PATH` | Read-only inspection of a file or directory |
-| `phantom remember "TEXT"` | Saves one explicit memory |
-| `phantom memories` | Lists memories with numbers, IDs, and timestamps |
-| `phantom search QUERY` | Finds stored memories by deterministic keyword match |
+| `phantom remember "TEXT"` | Saves one explicit memory, optionally with `--tag` |
+| `phantom memories` | Lists memories with numbers, IDs, tags, and timestamps |
+| `phantom tags` | Lists tags with the number of memories carrying each |
+| `phantom tag ID TAG` | Adds tags to one memory; `--remove` detaches them |
+| `phantom search QUERY` | Finds stored memories by keyword or tag, with `--tag` filtering |
 | `phantom forget ID` | Deletes one memory, after confirmation |
 | `phantom status` | Reports model, Ollama, database health, and memory count |
 | `phantom exorcise` | Atmospheric shutdown that deletes nothing |
@@ -102,7 +105,10 @@ only when Ollama reports them.
 | `/help` | Show the command list |
 | `/remember TEXT` | Save a memory without leaving the session |
 | `/memories` | List saved memories |
-| `/search QUERY` | Find saved memories by deterministic keyword match |
+| `/search QUERY` | Find saved memories by keyword or tag |
+| `/tags` | List tags and how many memories use each |
+| `/tag ID TAG...` | Attach tags to one memory |
+| `/untag ID TAG...` | Remove tags from one memory |
 | `/forget ID` | Delete one memory after confirmation |
 | `/status` / `/mood` | Show model and archive state / current mood and its evidence |
 | `/clear` | Drop this session's conversation from memory |
@@ -144,7 +150,34 @@ phantom search pytest --json
 
 Search uses deterministic keyword overlap over stored memories and breaks ties
 by recency. It contacts no model, builds no embeddings, and modifies nothing.
-The same ranking powers automatic recall in `chat` and `ask`.
+Tag matches also count, so a memory labelled `#kubernetes` is recalled even when
+the stored text never uses that word. The same ranking powers automatic recall
+in `chat` and `ask`.
+
+### Tags
+
+```bash
+phantom remember "Prefer pytest for new work." --tag python,testing
+phantom memories --tag python
+phantom search pytest --tag python
+phantom tags
+phantom tag 1a2b3c4d client-work --remove
+```
+
+Tags are short local labels, normalized to lowercase and limited to letters,
+digits, hyphens, and underscores (32 characters, 8 tags per memory). They live
+in the same SQLite archive as the memories and are never derived by a model.
+`phantom tag` changes labels only: the memory text, timestamp, and ID stay
+exactly the same, and no memory is ever deleted by it.
+
+`--tag` on `memories` and `search` narrows the existing list or ranking.
+`phantom tags` shows the vocabulary you have built. Both `memories` and `tags`
+support `--json` for scripts.
+
+Archives created by an earlier PHANTOM build are upgraded in place: schema
+version 1 gains the `memory_tags` table without rewriting, reordering, or
+removing any existing memory. The upgrade is additive and rolled back if it
+fails.
 
 ### Inspect
 
@@ -214,8 +247,8 @@ is set, or `TERM=dumb`.
   account, and no telemetry.
 - **Only loopback by default.** The HTTP client ignores proxy environment
   variables and refuses redirects, so a prompt cannot be silently rerouted.
-- **Data stays local.** Memories live in a SQLite file you can read, copy, or
-  delete. Conversation transcripts are not persisted.
+- **Data stays local.** Memories and their tags live in a SQLite file you can
+  read, copy, or delete. Conversation transcripts are not persisted.
 - **Model output is sanitised.** Terminal escape and control sequences are
   stripped before display.
 - **Deletion is narrow.** Only one explicitly identified memory, only after
@@ -249,7 +282,7 @@ python scripts/demo.py --no-chat    # fast smoke demo against a temp archive
 Ollama is mocked in CLI tests, so no model, network, or real archive is needed.
 Tests use temporary directories and never touch `~/.phantom` or a real project.
 
-Last run on Windows with Python 3.14.3: **200 passed, 2 skipped** (the skips need
+Last run on Windows with Python 3.14.3: **224 passed, 2 skipped** (the skips need
 symlink privileges that the environment did not grant).
 
 Exit codes: `0` success, `2` invalid input, `3` model or Ollama unavailable,
@@ -263,6 +296,8 @@ Exit codes: `0` success, `2` invalid input, `3` model or Ollama unavailable,
 - The model's interpretation is a hypothesis. The scanner report is the
   evidence.
 - Conversation history is intentionally not persisted.
+- Tags are labels, not a hierarchy: there are no nested tags, and one memory
+  holds at most 8. Filtering and recall are deterministic string matching.
 
 ## License
 

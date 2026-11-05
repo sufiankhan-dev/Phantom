@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Iterator, Sequence
 
 from core.memory import MemoryStore, PhantomMemoryError
 from core.personality import MoodEngine, MoodEvent, MoodState
@@ -21,6 +21,20 @@ def open_store(settings: Settings) -> Iterator[MemoryStore]:
         yield store
     finally:
         store.close()
+
+
+def split_tag_arguments(values: Sequence[str] | None) -> list[str]:
+    """Split repeated ``--tag`` values into individual tags.
+
+    Both ``--tag python --tag cli`` and ``--tag python,cli`` are accepted.
+    Empty pieces are ignored; normalization and validation happen in the
+    memory store.
+    """
+
+    tags: list[str] = []
+    for value in values or ():
+        tags.extend(part.strip() for part in str(value).split(",") if part.strip())
+    return tags
 
 
 def load_mood(store: MemoryStore) -> MoodState:

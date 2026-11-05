@@ -119,20 +119,24 @@ def main(argv: list[str] | None = None) -> int:
         _step("1. Awakening and real dependency checks (bare `phantom`)")
         _run(common)
 
-        _step("2. Storing an explicit memory")
+        _step("2. Storing an explicit, tagged memory")
         _run(
             [
                 *common,
                 "remember",
                 "I prefer pytest and short, evidence-based answers.",
+                "--tag",
+                "preferences,testing",
             ]
         )
 
         _step("3. Reading the archive in a new process (persistence)")
         _run([*common, "memories"])
+        _run([*common, "memories", "--tag", "preferences"])
 
-        _step("4. Deterministic memory search (no model call)")
-        _run([*common, "search", "pytest"])
+        _step("4. Deterministic search and tagged filtering (no model call)")
+        _run([*common, "tags"])
+        _run([*common, "search", "pytest", "--tag", "preferences"])
 
         if options.no_chat:
             _step("5. Model turns skipped (--no-chat)")

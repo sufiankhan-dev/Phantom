@@ -10,11 +10,15 @@ from core.memory import (
     AmbiguousMemoryError,
     InvalidMemoryError,
     MAX_MEMORY_CHARS,
+    MAX_TAGS_PER_MEMORY,
     MemoryDatabaseError,
     MemoryNotFoundError,
     MemoryStore,
+    SCHEMA_VERSION,
     SchemaVersionError,
     default_db_path,
+    normalize_tag,
+    normalize_tags,
 )
 
 
@@ -160,9 +164,10 @@ def test_schema_version_and_health(store):
     store.remember("health check")
     health = store.health()
     assert health.ok is True
-    assert health.schema_version == 1
+    assert health.schema_version == SCHEMA_VERSION
     assert health.memory_count == 1
     assert health.interpretation_count == 0
+    assert health.tag_count == 0
     assert health.path.endswith("phantom.db")
 
 
@@ -185,7 +190,10 @@ def test_schema_meta_mismatch_is_rejected(tmp_path):
     store.close()
 
     conn = sqlite3.connect(path)
-    conn.execute("UPDATE schema_meta SET value = '2' WHERE key = 'schema_version'")
+    conn.execute(
+        "UPDATE schema_meta SET value = ? WHERE key = 'schema_version'",
+        (str(SCHEMA_VERSION + 1),),
+    )
     conn.commit()
     conn.close()
 
@@ -308,3 +316,185 @@ def test_default_db_path_from_environment(monkeypatch):
     assert str(default_db_path({"PHANTOM_HOME": "C:/tmp/phantom-home"})).endswith(
         "phantom.db"
     )
+
+
+# -- tags --------------------------------------------------------------
+
+
+def test_tags_are_normalized_deduplicated_and_sorted(store):
+    record = store.remember(
+        "I prefer pytest.",
+        tags=["Python", "#CLI", "python"],
+    )
+
+    assert record.tags == ("cli", "python")
+    assert store.get_memory(record.short_id).tags == ("cli", "python")
+    listed = store.list_memories()
+    assert listed[0].tags == ("cli", "python")
+    assert record.as_dict()["tags"] == ["cli", "python"]
+
+
+def test_tag_validation_rejects_unsafe_or_oversized_values():
+    assert normalize_tag("#Python") == "python"
+    assert normalize_tags(["b", "a", "b"]) == ("a", "b")
+    assert normalize_tags(None) == ()
+    assert normalize_tags("Python") == ("python",)
+
+    for bad in ("", "   ", "#", "two words", "bad!", "a" * 33, "café"):
+        with pytest.raises(InvalidMemoryError):
+            normalize_tag(bad)
+
+    too_many = [f"tag{index}" for index in range(MAX_TAGS_PER_MEMORY + 1)]
+    with pytest.raises(InvalidMemoryError):
+        normalize_tags(too_many)
+
+
+def test_tag_filtering_counts_and_search(store):
+    pytest_memory = store.remember(
+        "I prefer pytest.",
+        tags=["python", "testing"],
+    )
+    store.remember("Deploy with kubectl.", tags=["devops"])
+
+    assert [item.id for item in store.list_memories(tag="python")] == [
+        pytest_memory.id
+    ]
+    assert store.count_memories(tag="python") == 1
+    assert store.count_memories() == 2
+    assert store.search_memories("pytest", tag="python")[0].id == pytest_memory.id
+    assert store.list_memories(tag="missing") == []
+
+
+def test_search_finds_a_tag_even_when_content_does_not_match(store):
+    tagged = store.remember("A deployment note.", tags=["kubernetes"])
+    store.remember("Unrelated content.")
+
+    results = store.search_memories("kubernetes")
+    assert [item.id for item in results] == [tagged.id]
+
+
+def test_add_and_remove_tags_never_changes_content(store):
+    record = store.remember("Exact words.", tags=["one"])
+
+    updated = store.tag_memory(record.short_id, ["Two", "#three"])
+    assert updated.tags == ("one", "three", "two")
+    assert updated.content == record.content
+
+    trimmed = store.tag_memory(record.id, ["one", "missing"], remove=True)
+    assert trimmed.tags == ("three", "two")
+    assert trimmed.content == record.content
+
+    unchanged = store.tag_memory(record.id, ["three"])
+    assert unchanged.tags == ("three", "two")
+
+
+def test_tag_limit_is_enforced_without_partial_writes(store):
+    full = [f"tag{index}" for index in range(MAX_TAGS_PER_MEMORY)]
+    record = store.remember("At the limit.", tags=full)
+
+    with pytest.raises(InvalidMemoryError):
+        store.tag_memory(record.id, ["one-more"])
+    assert store.get_memory(record.id).tags == tuple(sorted(full))
+
+    with pytest.raises(InvalidMemoryError):
+        store.remember("Too many.", tags=[*full, "one-more"])
+    assert store.count_memories() == 1
+
+
+def test_list_tags_counts_and_orders_by_use(store):
+    store.remember("First.", tags=["python", "cli"])
+    store.remember("Second.", tags=["python"])
+
+    assert [(item.tag, item.count) for item in store.list_tags()] == [
+        ("python", 2),
+        ("cli", 1),
+    ]
+
+
+def test_forget_removes_its_tags_only(store):
+    removed = store.remember("Delete me.", tags=["gone", "shared"])
+    survivor = store.remember("Keep me.", tags=["shared"])
+
+    store.forget(removed.id)
+
+    assert store.get_memory(survivor.id).tags == ("shared",)
+    assert [(item.tag, item.count) for item in store.list_tags()] == [
+        ("shared", 1)
+    ]
+
+
+def test_tags_persist_across_connections(tmp_path):
+    path = tmp_path / "tagged.db"
+    first = MemoryStore(path)
+    first.initialize()
+    record = first.remember("Carry this.", tags=["portable"])
+    first.close()
+
+    second = MemoryStore(path)
+    second.initialize()
+    try:
+        loaded = second.get_memory(record.id)
+        assert loaded.tags == ("portable",)
+        assert second.count_memories(tag="portable") == 1
+    finally:
+        second.close()
+
+
+def test_incomplete_version_one_archive_is_not_migrated(tmp_path):
+    path = tmp_path / "broken-v1.db"
+    original = MemoryStore(path)
+    original.initialize()
+    original.close()
+
+    conn = sqlite3.connect(path)
+    conn.execute("DROP TABLE memory_tags")
+    conn.execute("DROP TABLE mood_events")
+    conn.execute("PRAGMA user_version = 1")
+    conn.execute("UPDATE schema_meta SET value = '1' WHERE key = 'schema_version'")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(SchemaVersionError):
+        MemoryStore(path).initialize()
+
+    conn = sqlite3.connect(path)
+    try:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    finally:
+        conn.close()
+    assert "memory_tags" not in tables
+    assert "mood_events" not in tables
+
+
+def test_version_one_archive_is_upgraded_without_losing_memories(tmp_path):
+    path = tmp_path / "v1.db"
+    original = MemoryStore(path)
+    original.initialize()
+    record = original.remember("A row from schema version one.")
+    original.close()
+
+    # Recreate the on-disk shape of a version 1 archive.
+    conn = sqlite3.connect(path)
+    conn.execute("DROP TABLE memory_tags")
+    conn.execute("PRAGMA user_version = 1")
+    conn.execute("UPDATE schema_meta SET value = '1' WHERE key = 'schema_version'")
+    conn.commit()
+    conn.close()
+
+    upgraded = MemoryStore(path)
+    upgraded.initialize()
+    try:
+        health = upgraded.health()
+        assert health.ok is True
+        assert health.schema_version == SCHEMA_VERSION
+        restored = upgraded.get_memory(record.id)
+        assert restored.content == "A row from schema version one."
+        assert restored.tags == ()
+        assert upgraded.tag_memory(restored.id, ["migrated"]).tags == ("migrated",)
+    finally:
+        upgraded.close()

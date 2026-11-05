@@ -26,6 +26,8 @@ COMMANDS = (
     "inspect",
     "remember",
     "memories",
+    "tags",
+    "tag",
     "search",
     "forget",
     "status",
@@ -181,11 +183,11 @@ def run_cli(
     return CliResult(code, out.getvalue(), err.getvalue())
 
 
-def seed_memory(tmp_path: Path, text: str):
+def seed_memory(tmp_path: Path, text: str, tags: Sequence[str] | None = None):
     store = MemoryStore(tmp_path / "phantom.db")
     store.initialize()
     try:
-        return store.remember(text)
+        return store.remember(text, tags=tags)
     finally:
         store.close()
 
@@ -251,6 +253,8 @@ def test_parser_accepts_every_command():
             argv.append("pytest")
         elif command == "remember":
             argv.append("text")
+        elif command == "tag":
+            argv.extend(["abcd", "python"])
         elif command == "forget":
             argv.append("abcd")
         args = parser.parse_args(argv)
@@ -267,6 +271,8 @@ def test_parser_accepts_every_command():
         ["inspect", ".", "--max-depth", "0"],
         ["remember"],
         ["forget"],
+        ["tag"],
+        ["tag", "abcd"],
         ["memories", "--limit", "0"],
         ["status", "--timeout", "0"],
     ],
@@ -410,6 +416,152 @@ def test_memories_render_untrusted_text_literally(tmp_path):
     assert "[bold red]not markup[/bold red]" in result.out
     assert "\x1b" not in result.out
     assert "escape sequence" in result.out
+
+
+def test_remember_attaches_normalized_tags(tmp_path):
+    result = run_cli(
+        [
+            "remember",
+            "I prefer pytest.",
+            "--tag",
+            "Python",
+            "--tag",
+            "cli,testing",
+            "--plain",
+        ],
+        tmp_path,
+    )
+
+    assert result.code == 0
+    assert "#python" in result.out
+    record = read_memories(tmp_path)[0]
+    assert record.tags == ("cli", "python", "testing")
+
+
+def test_remember_rejects_an_invalid_tag(tmp_path):
+    result = run_cli(
+        ["remember", "Something.", "--tag", "two words", "--plain"],
+        tmp_path,
+    )
+
+    assert result.code == 2
+    assert "not a valid tag" in result.err
+    assert read_memories(tmp_path) == []
+
+
+def test_memories_filters_by_tag_and_emits_json(tmp_path):
+    tagged = seed_memory(tmp_path, "Tagged content.", tags=["python"])
+    other = seed_memory(tmp_path, "Other content.", tags=["devops"])
+
+    filtered = run_cli(["memories", "--tag", "python", "--plain"], tmp_path)
+    assert filtered.code == 0
+    assert tagged.short_id in filtered.out
+    assert tagged.content in filtered.out
+    assert other.short_id not in filtered.out
+    assert "tagged #python" in filtered.out
+
+    payload = json.loads(
+        run_cli(["memories", "--tag", "python", "--json"], tmp_path).out
+    )
+    assert payload["tag"] == "python"
+    assert payload["total_memories"] == 1
+    assert payload["archive_total"] == 2
+    assert payload["results"][0]["tags"] == ["python"]
+
+
+def test_memories_with_an_unknown_tag_is_clear_and_harmless(tmp_path):
+    seed_memory(tmp_path, "Something.", tags=["python"])
+
+    result = run_cli(["memories", "--tag", "missing", "--plain"], tmp_path)
+    assert result.code == 0
+    assert 'No stored memory carries the tag "#missing"' in result.out
+    assert len(read_memories(tmp_path)) == 1
+
+
+def test_tags_lists_counts_and_json(tmp_path):
+    seed_memory(tmp_path, "First.", tags=["python", "cli"])
+    seed_memory(tmp_path, "Second.", tags=["python"])
+
+    plain = run_cli(["tags", "--plain"], tmp_path)
+    assert plain.code == 0
+    assert "#python" in plain.out
+    assert "#cli" in plain.out
+    assert "2 tags across 2 memories" in plain.out
+
+    payload = json.loads(run_cli(["tags", "--json"], tmp_path).out)
+    assert payload["total_tags"] == 2
+    assert payload["total_memories"] == 2
+    assert payload["tags"][0] == {"tag": "python", "count": 2}
+
+
+def test_tags_is_empty_and_clear_on_a_fresh_archive(tmp_path):
+    result = run_cli(["tags", "--plain"], tmp_path)
+    assert result.code == 0
+    assert "No tags have been attached yet" in result.out
+
+
+def test_tag_adds_and_removes_without_deleting_or_rewriting(tmp_path):
+    record = seed_memory(tmp_path, "Exact words.")
+
+    added = run_cli(
+        ["tag", record.short_id, "Python", "#cli", "--plain"],
+        tmp_path,
+    )
+    assert added.code == 0
+    assert "Added 2 tag(s)" in added.out
+    assert "#python" in added.out
+    assert read_memories(tmp_path)[0].tags == ("cli", "python")
+    assert read_memories(tmp_path)[0].content == "Exact words."
+
+    removed = run_cli(
+        ["tag", record.id, "cli", "--remove", "--plain"],
+        tmp_path,
+    )
+    assert removed.code == 0
+    assert "Removed 1 tag(s)" in removed.out
+    assert read_memories(tmp_path)[0].tags == ("python",)
+    assert read_memories(tmp_path)[0].content == "Exact words."
+
+
+def test_tag_reports_no_changes_and_unknown_memories(tmp_path):
+    record = seed_memory(tmp_path, "Tagged.", tags=["python"])
+
+    unchanged = run_cli(["tag", record.id, "python", "--plain"], tmp_path)
+    assert unchanged.code == 0
+    assert "already present" in unchanged.out
+    assert "Nothing was written" in unchanged.out
+
+    missing = run_cli(["tag", "deadbeef", "python", "--plain"], tmp_path)
+    assert missing.code == 2
+    assert "No memory matches" in missing.err
+    assert len(read_memories(tmp_path)) == 1
+
+
+def test_search_filters_by_tag_and_reports_it_in_json(tmp_path):
+    tagged = seed_memory(tmp_path, "I prefer pytest.", tags=["python"])
+    other = seed_memory(tmp_path, "I deploy with pytest.", tags=["devops"])
+
+    result = run_cli(["search", "pytest", "--tag", "python", "--plain"], tmp_path)
+    assert result.code == 0
+    assert tagged.short_id in result.out
+    assert other.short_id not in result.out
+    assert 'in #python' in result.out
+
+    payload = json.loads(
+        run_cli(["search", "pytest", "--tag", "python", "--json"], tmp_path).out
+    )
+    assert payload["tag"] == "python"
+    assert payload["total_memories"] == 1
+    assert payload["results"][0]["tags"] == ["python"]
+
+
+def test_status_reports_schema_version_and_tag_count(tmp_path):
+    seed_memory(tmp_path, "Tagged.", tags=["python", "cli"])
+
+    payload = json.loads(run_cli(["status", "--json"], tmp_path).out)
+    assert payload["database"]["schema_version"] == 2
+    assert payload["database"]["memories"] == 1
+    assert payload["database"]["tags"] == 2
 
 
 def test_plain_renderer_emits_no_ansi_even_on_a_terminal():
@@ -727,7 +879,8 @@ def test_status_json_is_machine_readable(tmp_path):
     assert payload["ollama"]["reachable"] is True
     assert payload["ollama"]["model_available"] is True
     assert payload["database"]["memories"] == 1
-    assert payload["database"]["schema_version"] == 1
+    assert payload["database"]["schema_version"] == 2
+    assert payload["database"]["tags"] == 0
 
 
 def test_status_honours_the_model_environment(tmp_path):
@@ -1104,6 +1257,39 @@ def test_chat_slash_search_finds_stored_memories(tmp_path):
     assert record.short_id in result.out
     assert "I prefer pytest." in result.out
     assert "Neovim" not in result.out
+
+
+def test_chat_slash_tag_and_untag_manage_tags(tmp_path):
+    record = seed_memory(tmp_path, "I prefer pytest.")
+    brain = FakeBrain()
+
+    result = run_cli(
+        ["chat", "--plain"],
+        tmp_path,
+        brain=brain,
+        input_lines=[
+            f"/tag {record.short_id} Python cli",
+            "/tags",
+            f"/untag {record.short_id} cli",
+            "/exit",
+        ],
+    )
+
+    assert result.code == 0
+    assert "Added #cli #python" in result.out
+    assert "Memory tags" in result.out
+    assert "Removed #cli" in result.out
+    assert read_memories(tmp_path)[0].tags == ("python",)
+
+
+def test_chat_slash_tag_requires_an_id_and_a_tag(tmp_path):
+    result = run_cli(
+        ["chat", "--plain"],
+        tmp_path,
+        input_lines=["/tag only-an-id", "/exit"],
+    )
+    assert result.code == 0
+    assert "Usage: /tag ID TAG..." in result.out
 
 
 def test_chat_slash_forget_requires_confirmation(tmp_path):

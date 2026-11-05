@@ -8,8 +8,14 @@ from core.personality import MoodEngine, MoodEvent
 
 from phantom.context import CommandContext
 from phantom.errors import UsageError
-from phantom.storage import load_mood, open_store, record_mood
+from phantom.storage import (
+    load_mood,
+    open_store,
+    record_mood,
+    split_tag_arguments,
+)
 from phantom.views import format_timestamp
+from phantom.render import sanitize_output
 
 
 def run(ctx: CommandContext, args: Any) -> int:
@@ -20,8 +26,9 @@ def run(ctx: CommandContext, args: Any) -> int:
             hint='Example: phantom remember "I prefer pytest."',
         )
 
+    tags = split_tag_arguments(getattr(args, "tag", None))
     with open_store(ctx.settings) as store:
-        record = store.remember(text)
+        record = store.remember(text, tags=tags)
         mood = MoodEngine(load_mood(store))
         record_mood(
             store,
@@ -32,10 +39,13 @@ def run(ctx: CommandContext, args: Any) -> int:
         )
         total = store.count_memories()
 
+    subtitle = f"user supplied - {format_timestamp(record.created_at)}"
+    if record.tags:
+        subtitle += " - " + " ".join(f"#{tag}" for tag in record.tags)
     ctx.renderer.panel(
-        record.content,
+        sanitize_output(record.content),
         title=f"Memory archived - {record.short_id}",
-        subtitle=f"user supplied - {format_timestamp(record.created_at)}",
+        subtitle=subtitle,
     )
     ctx.renderer.ok(
         f"Stored {total} {'memory' if total == 1 else 'memories'} in "

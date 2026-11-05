@@ -51,6 +51,8 @@ _COMMAND_MODULES = {
     "inspect": "phantom.commands.inspect",
     "remember": "phantom.commands.remember",
     "memories": "phantom.commands.memories",
+    "tags": "phantom.commands.tags",
+    "tag": "phantom.commands.tag",
     "search": "phantom.commands.search",
     "forget": "phantom.commands.forget",
     "status": "phantom.commands.status",
@@ -314,14 +316,33 @@ def build_parser() -> argparse.ArgumentParser:
         epilog='example:\n  phantom remember "I prefer pytest."',
     )
     remember.add_argument("text", metavar="TEXT", help="Exact memory text to store.")
+    remember.add_argument(
+        "--tag",
+        "-t",
+        metavar="TAG",
+        action="append",
+        default=None,
+        help=(
+            "Attach a tag; repeat or comma-separate for several "
+            "(max 8 per memory)."
+        ),
+    )
 
     memories = subparsers.add_parser(
         "memories",
         parents=[common],
         help="List archived memories with IDs and timestamps.",
-        description="List stored memories, newest first, with short IDs and local timestamps.",
+        description=(
+            "List stored memories, newest first, with short IDs, tags, and "
+            "local timestamps. Use --tag to show one tag only."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="example:\n  phantom memories --limit 10",
+        epilog=(
+            "examples:\n"
+            "  phantom memories --limit 10\n"
+            "  phantom memories --tag python\n"
+            "  phantom memories --tag python --json"
+        ),
     )
     memories.add_argument(
         "--limit",
@@ -330,6 +351,75 @@ def build_parser() -> argparse.ArgumentParser:
         type=_positive_int,
         default=None,
         help="Show at most N memories.",
+    )
+    memories.add_argument(
+        "--tag",
+        "-t",
+        metavar="TAG",
+        default=None,
+        help="Show only memories carrying this tag.",
+    )
+    memories.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit memories as machine-readable JSON.",
+    )
+
+    tags = subparsers.add_parser(
+        "tags",
+        parents=[common],
+        help=_COMMAND_SUMMARIES["tags"],
+        description=(
+            "List every tag attached to a memory, most used first, with the "
+            "number of memories carrying it. Tags are local labels; nothing is "
+            "sent anywhere."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  phantom tags\n"
+            "  phantom tags --json"
+        ),
+    )
+    tags.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit tags and counts as machine-readable JSON.",
+    )
+
+    tag = subparsers.add_parser(
+        "tag",
+        parents=[common],
+        help=_COMMAND_SUMMARIES["tag ID TAG"],
+        description=(
+            "Add tags to one explicitly identified memory, or remove them with "
+            "--remove. Tags are normalized to lowercase and limited to letters, "
+            "digits, hyphens, and underscores. A memory holds at most 8 tags. "
+            "The memory content and timestamp are never changed."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  phantom tag 1a2b3c4d python testing\n"
+            "  phantom tag 1a2b3c4d python,cli\n"
+            "  phantom tag 1a2b3c4d old-tag --remove"
+        ),
+    )
+    tag.add_argument(
+        "memory_id",
+        metavar="ID",
+        help="Full memory ID or a unique prefix of at least 4 hex characters.",
+    )
+    tag.add_argument(
+        "tags",
+        nargs="+",
+        metavar="TAG",
+        help="One or more tags to add or remove.",
+    )
+    tag.add_argument(
+        "--remove",
+        action="store_true",
+        help="Remove the named tags instead of adding them.",
     )
 
     search = subparsers.add_parser(
@@ -346,6 +436,7 @@ def build_parser() -> argparse.ArgumentParser:
             "examples:\n"
             '  phantom search pytest\n'
             '  phantom search "test framework" --limit 3\n'
+            '  phantom search pytest --tag python\n'
             '  phantom search pytest --json'
         ),
     )
@@ -353,7 +444,7 @@ def build_parser() -> argparse.ArgumentParser:
         "query",
         nargs="+",
         metavar="QUERY",
-        help="Words to match against stored memories.",
+        help="Words to match against stored memories and tags.",
     )
     search.add_argument(
         "--limit",
@@ -362,6 +453,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=_positive_int,
         default=None,
         help="Return at most N matches (default: 5).",
+    )
+    search.add_argument(
+        "--tag",
+        "-t",
+        metavar="TAG",
+        default=None,
+        help="Search only within memories carrying this tag.",
     )
     search.add_argument(
         "--json",

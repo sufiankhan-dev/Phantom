@@ -17,13 +17,15 @@ truth.
 slash commands including `/search`), `phantom ask TEXT` (one streamed answer,
 automatic memory recall, optional `--context PATH` read-only grounding, `--json`),
 `phantom inspect` (read-only scan, evidence report, optional local-model
-interpretation, configurable limits, `--json`), `phantom remember`,
-`phantom memories` (numbered list), `phantom search QUERY` (deterministic
-keyword search, `--json`), `phantom forget` (list number, ID, or unique prefix),
-`phantom status`, `phantom exorcise` (real shutdown summary, final rule), and
-`phantom --help`; a `phantom` console script from `pyproject.toml`; global
-options before or after the subcommand; plain mode; animation gating for
-non-TTY, `NO_COLOR`, and `TERM=dumb`; JSON status; typed exit codes; 200 passing
+interpretation, configurable limits, `--json`), `phantom remember` (optional
+`--tag`), `phantom memories` (numbered list, `--tag` filter, `--json`),
+`phantom tags`, `phantom tag ID TAG` (add/remove labels), `phantom search QUERY`
+(deterministic keyword and tag search, `--tag`, `--json`), `phantom forget`
+(list number, ID, or unique prefix), `phantom status`, `phantom exorcise` (real
+shutdown summary, final rule), and `phantom --help`; a `phantom` console script
+from `pyproject.toml`; global options before or after the subcommand; plain
+mode; animation gating for non-TTY, `NO_COLOR`, and `TERM=dumb`; JSON status;
+typed exit codes; schema version 2 with an additive v1 upgrade; 224 passing
 tests plus 2 environment-skipped symlink tests.
 
 **Default model:** `qwen3:8b` everywhere (`core/brain.py`, CLI help, tests, and
@@ -254,6 +256,43 @@ when optional deps are missing.
 - **Acceptance:** 200 tests pass; live `ask` recalled a stored preference and
   streamed a grounded answer; `inspect --json` parses cleanly; existing
   commands and safety rules are unchanged.
+
+### M11 — Tagged, filterable memory
+
+- [x] Add schema version 2 with a normalized `memory_tags` table, a `tag`
+  index, and `ON DELETE CASCADE`. The v1 -> v2 upgrade only adds the table and
+  index, runs in a transaction, and never rewrites an existing memory.
+- [x] Normalize tags to lowercase, allow letters/digits/`-`/`_`, cap at 32
+  characters and 8 tags per memory, and deduplicate them deterministically.
+- [x] `phantom remember TEXT --tag NAME` accepts repeated or comma-separated
+  tags; validation refuses unsafe names before anything is written.
+- [x] `phantom memories --tag NAME` and `phantom search QUERY --tag NAME`
+  filter without changing the deterministic ranking; `--json` includes tags.
+- [x] `phantom tags` lists the vocabulary with counts; `phantom tag ID TAG...`
+  adds labels and `--remove` detaches them without touching content or IDs.
+- [x] Tag matches contribute to automatic recall in `chat` and `ask`.
+- [x] Chat gains `/tags`, `/tag`, and `/untag`; `status` reports tag count and
+  schema version; the memory table shows tags.
+- [x] Help, README, demo guide, automated demo, and tests are updated together.
+- **Acceptance:** 224 tests pass (2 environment skips); a v1 archive upgrades
+  with its memories intact; tag filtering, counting, persistence, cascade
+  cleanup, and the tag limit are covered; no model call is added anywhere in
+  the memory path.
+
+## Verification log (2026-11-05, tagged memory)
+
+| Command | Observed result |
+| --- | --- |
+| `python -m pytest -q` | 224 passed, 2 skipped (symlink privilege) |
+| `phantom remember ... --tag python,testing` | exit 0, two tags normalized and shown |
+| `phantom tags` | exit 0, counts by tag, newest vocabulary visible |
+| `phantom memories --tag python` | exit 0, only tagged memories shown |
+| `phantom memories --tag python --json` | exit 0, valid JSON including tags |
+| `phantom search pytest --tag python` | exit 0, no model contacted |
+| `phantom tag <id> python testing --plain` | exit 0, labels changed, content untouched |
+| `phantom tag <id> testing --remove` | exit 0, only the named tag removed |
+| `phantom status --json` | exit 0, `schema_version: 2`, `tags` count present |
+| v1 archive with an existing memory | upgraded in place, memory intact, tags usable |
 
 ## Verification log (2026-10-30)
 

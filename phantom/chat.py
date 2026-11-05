@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Callable
 
 from core.brain import Brain, BrainError, StreamChunk, StreamInterruptedError
-from core.memory import MemoryStore, PhantomMemoryError
+from core.memory import MemoryStore, PhantomMemoryError, normalize_tags
 from core.personality import (
     MemoryNote,
     MoodEngine,
@@ -32,6 +32,9 @@ _HELP_ROWS: tuple[tuple[str, str], ...] = (
     ("/remember TEXT", "Archive an explicit memory."),
     ("/memories", "List archived memories."),
     ("/search QUERY", "Find stored memories by keyword."),
+    ("/tags", "List memory tags and counts."),
+    ("/tag ID TAG...", "Attach tags to one memory."),
+    ("/untag ID TAG...", "Remove tags from one memory."),
     ("/forget ID", "Delete one memory after confirmation."),
     ("/status", "Check the model and the archive."),
     ("/mood", "Show PHANTOM's recorded internal state."),
@@ -235,6 +238,12 @@ class ChatSession:
             self._show_memories()
         elif command == "search":
             self._search(argument)
+        elif command == "tags":
+            self._show_tags()
+        elif command == "tag":
+            self._change_tags(argument, remove=False)
+        elif command == "untag":
+            self._change_tags(argument, remove=True)
         elif command == "forget":
             self._forget(argument)
         elif command == "status":
@@ -288,7 +297,7 @@ class ChatSession:
         if not records:
             self.renderer.note("The archive is empty. Use /remember TEXT to add one.")
             return
-        self.renderer.section("Memory archive", detail="newest first")
+        self.renderer.section("Memory archive", detail="user supplied - newest first")
         self.renderer.print(memory_table(self.renderer, records))
 
     def _search(self, argument: str) -> None:
@@ -311,6 +320,54 @@ class ChatSession:
         )
         self.renderer.print(memory_table(self.renderer, records))
         self.renderer.note(f"{len(records)} match(es). No model was contacted.")
+
+    def _show_tags(self) -> None:
+        try:
+            tags = self.store.list_tags()
+        except PhantomMemoryError as exc:
+            self.renderer.error(str(exc))
+            return
+        if not tags:
+            self.renderer.note(
+                "No tags yet. Store a memory with /remember, then /tag ID TAG."
+            )
+            return
+        self.renderer.section("Memory tags", detail="most used first")
+        table = self.renderer.table(None, ["Tag", "Memories"])
+        table.columns[1].justify = "right"
+        for item in tags:
+            table.add_row(f"#{item.tag}", str(item.count))
+        self.renderer.print(table)
+
+    def _change_tags(self, argument: str, *, remove: bool) -> None:
+        usage = "/untag ID TAG..." if remove else "/tag ID TAG..."
+        parts = argument.split()
+        if len(parts) < 2:
+            self.renderer.warning(f"Usage: {usage}")
+            return
+        selector, raw_tags = parts[0], parts[1:]
+        try:
+            requested = set(normalize_tags(raw_tags))
+            record = self.store.get_memory(selector)
+            before = set(record.tags)
+            changed = (before & requested) if remove else (requested - before)
+            if not changed:
+                self.renderer.note("No tag changes. Nothing was written.")
+                return
+            updated = self.store.tag_memory(record.id, sorted(requested), remove=remove)
+        except PhantomMemoryError as exc:
+            self.renderer.error(str(exc))
+            return
+
+        verb = "Removed" if remove else "Added"
+        tags = " ".join(f"#{tag}" for tag in sorted(changed))
+        self.renderer.ok(f"{verb} {tags} on {updated.short_id}.")
+        if updated.tags:
+            self.renderer.note(
+                "Tags: " + " ".join(f"#{tag}" for tag in updated.tags)
+            )
+        else:
+            self.renderer.note("This memory has no tags now.")
 
     def _forget(self, argument: str) -> None:
         if not argument:
